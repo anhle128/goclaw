@@ -3,15 +3,20 @@ set -e
 
 # Set up writable runtime directories for agent-installed packages.
 # Rootfs is read-only; /app/data is a writable Docker volume.
+# Docker named volumes initialize as root:root — fix ownership so goclaw
+# user can write to /app/data (requires CAP_DAC_OVERRIDE + CAP_CHOWN).
 RUNTIME_DIR="/app/data/.runtime"
-mkdir -p "$RUNTIME_DIR/pip" "$RUNTIME_DIR/npm-global/lib"
+if [ "$(id -u)" = "0" ]; then
+  chown goclaw:goclaw /app/data /app/workspace 2>/dev/null || true
+fi
+mkdir -p "$RUNTIME_DIR/pip" "$RUNTIME_DIR/npm-global/lib" "$RUNTIME_DIR/pip-cache"
+chown -R goclaw:goclaw "$RUNTIME_DIR" 2>/dev/null || true
 
 # Python: allow agent to pip install to writable target dir
 export PYTHONPATH="$RUNTIME_DIR/pip:${PYTHONPATH:-}"
 export PIP_TARGET="$RUNTIME_DIR/pip"
 export PIP_BREAK_SYSTEM_PACKAGES=1
 export PIP_CACHE_DIR="$RUNTIME_DIR/pip-cache"
-mkdir -p "$RUNTIME_DIR/pip-cache"
 
 # Node.js: allow agent to npm install -g to writable prefix
 # NODE_PATH includes both pre-installed system globals and runtime-installed globals.

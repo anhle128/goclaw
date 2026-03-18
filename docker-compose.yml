@@ -47,6 +47,7 @@ services:
       - SETUID
       - SETGID
       - CHOWN
+      - DAC_OVERRIDE
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=256m
     deploy:
@@ -67,4 +68,4 @@ volumes:
 networks:
   shared:
     name: shared
-    driver: bridge
+    external: true

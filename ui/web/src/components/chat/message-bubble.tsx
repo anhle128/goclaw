@@ -16,6 +16,11 @@ export function MessageBubble({ message }: MessageBubbleProps) {
     return null; // Tool messages are shown inline with assistant messages
   }
 
+  // Hide internal system nudges injected as user messages (e.g. onboarding, task reminders)
+  if (isUser && message.content?.startsWith("[System]")) {
+    return null;
+  }
+
   const isAssistant = message.role === "assistant";
   const hasThinking = isAssistant && !!message.thinking;
   const hasToolDetails = isAssistant && message.toolDetails && message.toolDetails.length > 0;
