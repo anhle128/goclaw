@@ -17,6 +17,7 @@
   },
   "apiKey": {
     "oauthToken": "OAuth Token",
+    "expires": "Hết hạn: {{date}}",
     "notSet": "Chưa thiết lập"
   },
   "form": {
@@ -44,7 +45,13 @@
     "alreadyAdded": "(đã thêm)",
     "nameFixed": "Tên",
     "configure": "Cấu hình kết nối provider LLM.",
-    "lowercaseHint": "Chữ thường, số, dấu gạch ngang"
+    "lowercaseHint": "Chữ thường, số, dấu gạch ngang",
+    "setupToken": "Setup Token",
+    "setupTokenHint": "Chạy 'claude setup-token' trong terminal để lấy OAuth token. Token OAuth bí mật của provider. Được mã hóa phía máy chủ và không bao giờ lộ ra trong phản hồi API.",
+    "setupTokenHintTooltip": "Chạy 'claude setup-token' trong terminal để lấy OAuth token. Token OAuth bí mật của provider. Được mã hóa phía máy chủ và không bao giờ lộ ra trong phản hồi API.",
+    "apiKeyHint": "Khóa bí mật của provider. Được mã hóa phía máy chủ và không bao giờ lộ ra trong phản hồi API.",
+    "setupTokenInvalidPrefix": "Setup token phải bắt đầu bằng sk-ant-oat01-",
+    "setupTokenTooShort": "Setup token quá ngắn (tối thiểu 80 ký tự)"
   },
   "delete": {
     "title": "Xóa provider",
@@ -64,6 +71,7 @@
     "cohere": "Cohere",
     "perplexity": "Perplexity",
     "chatgpt_oauth": "ChatGPT (OAuth)",
+    "anthropic_oauth": "Anthropic (OAuth Token)",
     "yescale": "YesScale",
     "acp": "ACP"
   },
@@ -106,7 +114,7 @@
     "starting": "Đang bắt đầu...",
     "remoteVps": "Remote/VPS?",
     "loggedOut": "Đã đăng xuất",
-    "loggedOutDesc": "Đã xóa OAuth token OpenAI",
+    "loggedOutDesc": "Đã xóa OAuth Token OpenAI",
     "oauthFailed": "OAuth thất bại",
     "exchangeFailed": "Trao đổi thất bại",
     "logoutFailed": "Đăng xuất thất bại"

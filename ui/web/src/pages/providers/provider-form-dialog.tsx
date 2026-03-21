@@ -27,6 +27,8 @@ import { OAuthSection } from "./provider-oauth-section";
 import { CLISection } from "./provider-cli-section";
 import { ACPSection } from "./provider-acp-section";
 import { Loader2 } from "lucide-react";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { InfoTip } from "@/pages/setup/info-tip";
 
 interface ProviderFormDialogProps {
   open: boolean;
@@ -62,6 +64,7 @@ export function ProviderFormDialog({ open, onOpenChange, provider, onSubmit, exi
   const isOAuth = providerType === "chatgpt_oauth";
   const isCLI = providerType === "claude_cli";
   const isACP = providerType === "acp";
+  const isAnthropicOAuth = providerType === "anthropic_oauth";
 
   useEffect(() => {
     if (open) {
@@ -127,6 +130,17 @@ export function ProviderFormDialog({ open, onOpenChange, provider, onSubmit, exi
 
       // Only include api_key if it's a real value (not the mask)
       if (apiKey && apiKey !== "***") {
+        // Validate Anthropic setup token format
+        if (isAnthropicOAuth && !apiKey.startsWith("sk-ant-oat01-")) {
+          setError(t("form.setupTokenInvalidPrefix"));
+          setLoading(false);
+          return;
+        }
+        if (isAnthropicOAuth && apiKey.length < 80) {
+          setError(t("form.setupTokenTooShort"));
+          setLoading(false);
+          return;
+        }
         data.api_key = apiKey;
       }
 
@@ -161,9 +175,14 @@ export function ProviderFormDialog({ open, onOpenChange, provider, onSubmit, exi
                 if (v === "chatgpt_oauth") {
                   setName("openai-codex");
                   setDisplayName("ChatGPT (OAuth)");
+                } else if (v === "anthropic_oauth") {
+                  setName("anthropic-oauth");
+                  setDisplayName("Anthropic (OAuth Token)");
                 } else {
                   if (name === "openai-codex") setName("");
+                  if (name === "anthropic-oauth") setName("");
                   if (displayName === "ChatGPT (OAuth)") setDisplayName("");
+                  if (displayName === "Anthropic (OAuth Token)") setDisplayName("");
                 }
               }}
             />
@@ -259,15 +278,25 @@ export function ProviderFormDialog({ open, onOpenChange, provider, onSubmit, exi
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="apiKey">{t("form.apiKey")}</Label>
+                    <Label htmlFor="apiKey" className="inline-flex items-center gap-1.5">
+                      {isAnthropicOAuth ? t("form.setupToken") : t("form.apiKey")}
+                      <TooltipProvider>
+                        <InfoTip text={isAnthropicOAuth ? t("form.setupTokenHintTooltip") : t("form.apiKeyHint", "Your provider's secret key. Encrypted server-side and never exposed in API responses.")} />
+                      </TooltipProvider>
+                    </Label>
                     <Input
                       id="apiKey"
                       type="password"
                       value={apiKey}
                       onChange={(e) => setApiKey(e.target.value)}
-                      placeholder={isEdit ? t("form.apiKeyEditPlaceholder") : t("form.apiKeyPlaceholder")}
+                      placeholder={isAnthropicOAuth ? "sk-ant-oat01-..." : isEdit ? t("form.apiKeyEditPlaceholder") : t("form.apiKeyPlaceholder")}
                     />
-                    {isEdit && apiKey === "***" && (
+                    {isAnthropicOAuth && (
+                      <p className="text-xs text-muted-foreground">
+                        {t("form.setupTokenHint")}
+                      </p>
+                    )}
+                    {isEdit && apiKey === "***" && !isAnthropicOAuth && (
                       <p className="text-xs text-muted-foreground">
                         {t("form.apiKeySetHint")}
                       </p>

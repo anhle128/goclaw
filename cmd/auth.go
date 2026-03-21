@@ -19,6 +19,7 @@ func authCmd() *cobra.Command {
 	}
 	cmd.AddCommand(authStatusCmd())
 	cmd.AddCommand(authLogoutCmd())
+	cmd.AddCommand(authAnthropicCmd())
 	return cmd
 }
 
@@ -75,22 +76,38 @@ func gatewayRequest(method, path string) (map[string]any, error) {
 func authStatusCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "status",
-		Short: "Show OAuth authentication status",
-		Long:  "Check if ChatGPT OAuth is configured on the running gateway.",
+		Short: "Show authentication status for all providers",
+		Long:  "Check OAuth/token authentication status for OpenAI and Anthropic.",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// OpenAI status
 			result, err := gatewayRequest("GET", "/v1/auth/openai/status")
-			if err != nil {
-				return err
+			if err == nil {
+				if auth, _ := result["authenticated"].(bool); auth {
+					name, _ := result["provider_name"].(string)
+					fmt.Printf("OpenAI OAuth: active (provider: %s)\n", name)
+				} else {
+					fmt.Println("OpenAI OAuth: not configured")
+				}
 			}
 
-			if auth, _ := result["authenticated"].(bool); auth {
-				name, _ := result["provider_name"].(string)
-				fmt.Printf("OpenAI OAuth: active (provider: %s)\n", name)
-				fmt.Println("Use model prefix 'openai-codex/' in agent config (e.g. openai-codex/gpt-4o).")
-			} else {
-				fmt.Println("No OAuth tokens found.")
-				fmt.Println("Use the web UI to authenticate with ChatGPT OAuth.")
+			// Anthropic status
+			result, err = gatewayRequest("GET", "/v1/auth/anthropic/status")
+			if err == nil {
+				if auth, _ := result["authenticated"].(bool); auth {
+					tokenType, _ := result["token_type"].(string)
+					expiresAt, _ := result["expires_at"].(string)
+					if tokenType == "setup_token" && expiresAt != "" {
+						fmt.Printf("Anthropic: active (setup token, expires %s)\n", expiresAt)
+					} else if tokenType == "api_key" {
+						fmt.Println("Anthropic: active (API key)")
+					} else {
+						fmt.Println("Anthropic: active")
+					}
+				} else {
+					fmt.Println("Anthropic: not configured")
+				}
 			}
+
 			return nil
 		},
 	}
@@ -99,7 +116,7 @@ func authStatusCmd() *cobra.Command {
 func authLogoutCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "logout [provider]",
-		Short: "Remove stored OAuth tokens",
+		Short: "Remove stored OAuth Tokens",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			provider := "openai"
@@ -107,16 +124,22 @@ func authLogoutCmd() *cobra.Command {
 				provider = args[0]
 			}
 
-			if provider != "openai" {
-				return fmt.Errorf("unknown provider: %s (supported: openai)", provider)
+			switch provider {
+			case "openai":
+				_, err := gatewayRequest("POST", "/v1/auth/openai/logout")
+				if err != nil {
+					return err
+				}
+				fmt.Println("OpenAI OAuth Token removed.")
+			case "anthropic":
+				_, err := gatewayRequest("POST", "/v1/auth/anthropic/logout")
+				if err != nil {
+					return err
+				}
+				fmt.Println("Anthropic credentials removed.")
+			default:
+				return fmt.Errorf("unknown provider: %s (supported: openai, anthropic)", provider)
 			}
-
-			_, err := gatewayRequest("POST", "/v1/auth/openai/logout")
-			if err != nil {
-				return err
-			}
-
-			fmt.Println("OpenAI OAuth token removed.")
 			return nil
 		},
 	}

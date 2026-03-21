@@ -17,6 +17,7 @@
   },
   "apiKey": {
     "oauthToken": "OAuth Token",
+    "expires": "Expires: {{date}}",
     "notSet": "Not set"
   },
   "form": {
@@ -44,7 +45,13 @@
     "alreadyAdded": "(already added)",
     "nameFixed": "Name",
     "configure": "Configure an LLM provider connection.",
-    "lowercaseHint": "Lowercase, numbers, hyphens"
+    "lowercaseHint": "Lowercase, numbers, hyphens",
+    "setupToken": "Setup Token",
+    "setupTokenHint": "Run 'claude setup-token' in your terminal to get OAuth token. Your provider's secret OAuth token. Encrypted server-side and never exposed in API responses.",
+    "setupTokenHintTooltip": "Run 'claude setup-token' in your terminal to get OAuth token. Your provider's secret OAuth token. Encrypted server-side and never exposed in API responses.",
+    "apiKeyHint": "Your provider's secret key. Encrypted server-side and never exposed in API responses.",
+    "setupTokenInvalidPrefix": "Setup token must start with sk-ant-oat01-",
+    "setupTokenTooShort": "Setup token is too short (minimum 80 characters)"
   },
   "delete": {
     "title": "Delete Provider",
@@ -64,6 +71,7 @@
     "cohere": "Cohere",
     "perplexity": "Perplexity",
     "chatgpt_oauth": "ChatGPT (OAuth)",
+    "anthropic_oauth": "Anthropic (OAuth Token)",
     "yescale": "YesScale",
     "acp": "ACP"
   },
@@ -106,7 +114,7 @@
     "starting": "Starting...",
     "remoteVps": "Remote/VPS?",
     "loggedOut": "Logged out",
-    "loggedOutDesc": "OpenAI OAuth token removed",
+    "loggedOutDesc": "OpenAI OAuth Token removed",
     "oauthFailed": "OAuth failed",
     "exchangeFailed": "Exchange failed",
     "logoutFailed": "Logout failed"

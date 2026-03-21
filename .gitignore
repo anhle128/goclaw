@@ -46,3 +46,12 @@ k8s-*/*
 tests/**/creds.json
 ui/simple-saas
 *.tar
+
+openspec
+
+.serena
+
+.github/prompts
+.github/skills
+
+repomix-output.xml

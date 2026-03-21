@@ -150,6 +150,15 @@ export function ProvidersPage() {
                       <td className="px-4 py-3">
                         {p.provider_type === "chatgpt_oauth" ? (
                           <Badge variant="outline" className="text-xs">{t("apiKey.oauthToken")}</Badge>
+                        ) : p.provider_type === "anthropic_oauth" && p.api_key === "***" ? (
+                          <div className="flex flex-col gap-0.5">
+                            <Badge variant="outline" className="text-xs w-fit">{t("apiKey.setupToken")}</Badge>
+                            {typeof p.settings?.expires_at === "number" && (
+                              <span className="text-[10px] text-muted-foreground">
+                                {t("apiKey.expires", { date: new Date(p.settings.expires_at * 1000).toLocaleDateString() })}
+                              </span>
+                            )}
+                          </div>
                         ) : p.api_key === "***" ? (
                           <Badge variant="outline" className="font-mono text-xs">***</Badge>
                         ) : (

@@ -255,6 +255,7 @@ func runGateway() {
 	server.SetPairingService(pgStores.Pairing)
 	server.SetMessageBus(msgBus)
 	server.SetOAuthHandler(httpapi.NewOAuthHandler(cfg.Gateway.Token, pgStores.Providers, pgStores.ConfigSecrets, providerRegistry, msgBus))
+	server.SetAnthropicAuthHandler(httpapi.NewAnthropicAuthHandler(cfg.Gateway.Token, pgStores.Providers, providerRegistry, msgBus))
 
 	// contextFileInterceptor is created inside wireExtras.
 	// Declared here so it can be passed to registerAllMethods → AgentsMethods

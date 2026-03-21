@@ -291,9 +291,20 @@ func registerProvidersFromDB(registry *providers.Registry, provStore store.Provi
 		case store.ProviderChatGPTOAuth:
 			ts := oauth.NewDBTokenSource(provStore, secretStore, p.Name)
 			registry.Register(providers.NewCodexProvider(p.Name, ts, p.APIBase, ""))
-		case store.ProviderAnthropicNative:
+		case store.ProviderAnthropicNative, store.ProviderAnthropicOAuth:
 			registry.Register(providers.NewAnthropicProvider(p.APIKey,
 				providers.WithAnthropicBaseURL(p.APIBase)))
+			// Warn if setup token is nearing expiry
+			if p.ProviderType == store.ProviderAnthropicOAuth && len(p.Settings) > 0 {
+				var settings providers.AnthropicTokenSettings
+				if err := json.Unmarshal(p.Settings, &settings); err == nil {
+					if days := settings.DaysUntilExpiry(); days >= 0 && days <= 30 {
+						slog.Warn("anthropic setup token expiring soon",
+							"provider", p.Name, "days_remaining", days,
+							"action", "re-run 'claude setup-token' to refresh")
+					}
+				}
+			}
 		case store.ProviderDashScope:
 			registry.Register(providers.NewDashScopeProvider(p.Name, p.APIKey, p.APIBase, ""))
 		case store.ProviderBailian:

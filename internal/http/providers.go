@@ -87,6 +87,18 @@ func maskAPIKey(p *store.LLMProviderData) {
 	}
 }
 
+// registryNameForProvider returns the in-memory registry name for a provider.
+// Some provider types (e.g. anthropic-oauth) share a single registry entry
+// under a canonical name that differs from the DB name.
+func registryNameForProvider(p *store.LLMProviderData) string {
+	switch p.ProviderType {
+	case store.ProviderAnthropicNative, store.ProviderAnthropicOAuth:
+		return "anthropic"
+	default:
+		return p.Name
+	}
+}
+
 // registerInMemory adds (or replaces) a provider in the in-memory registry
 // so it's immediately usable for verify/chat without a gateway restart.
 func (h *ProvidersHandler) registerInMemory(p *store.LLMProviderData) {
@@ -121,7 +133,7 @@ func (h *ProvidersHandler) registerInMemory(p *store.LLMProviderData) {
 	case store.ProviderChatGPTOAuth:
 		ts := oauth.NewDBTokenSource(h.store, h.secretStore, p.Name)
 		h.providerReg.Register(providers.NewCodexProvider(p.Name, ts, p.APIBase, ""))
-	case store.ProviderAnthropicNative:
+	case store.ProviderAnthropicNative, store.ProviderAnthropicOAuth:
 		h.providerReg.Register(providers.NewAnthropicProvider(p.APIKey,
 			providers.WithAnthropicBaseURL(p.APIBase)))
 	case store.ProviderDashScope:
