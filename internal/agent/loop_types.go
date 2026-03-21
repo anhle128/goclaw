@@ -91,6 +91,9 @@ type Loop struct {
 	sandboxContainerDir    string
 	sandboxWorkspaceAccess string
 
+	// Shell deny group overrides from agent other_config (nil = all defaults)
+	shellDenyGroups map[string]bool
+
 	// Event callback for broadcasting agent events (run.started, chunk, tool.call, etc.)
 	onEvent func(event AgentEvent)
 
@@ -116,8 +119,8 @@ type Loop struct {
 	skillEvolve        bool
 	skillNudgeInterval int // nudge every N tool calls (0 = disabled, 15 = default)
 
-	// Group writer cache for system prompt injection
-	groupWriterCache *store.GroupWriterCache
+	// Config permission store for group file writer checks
+	configPermStore store.ConfigPermissionStore
 
 	// Team store for cross-session pending task detection
 	teamStore store.TeamStore
@@ -133,7 +136,10 @@ type Loop struct {
 
 	// Budget enforcement: monthly spending limit in cents (0 = unlimited)
 	budgetMonthlyCents int
-	tracingStore       store.TracingStore
+	tracingStore store.TracingStore
+
+	// Memory store for extractive memory fallback (writes directly when LLM flush fails)
+	memStore store.MemoryStore
 }
 
 // AgentEvent is emitted during agent execution for WS broadcasting.
@@ -200,6 +206,9 @@ type LoopConfig struct {
 	SandboxContainerDir    string // e.g. "/workspace"
 	SandboxWorkspaceAccess string // "none", "ro", "rw"
 
+	// Shell deny group overrides (nil = all defaults)
+	ShellDenyGroups map[string]bool
+
 	// Agent UUID for context propagation to tools
 	AgentUUID uuid.UUID
 	AgentType string // "open" or "predefined"
@@ -230,8 +239,8 @@ type LoopConfig struct {
 	SkillEvolve        bool
 	SkillNudgeInterval int // 0 = disabled, 15 = default
 
-	// Group writer cache for system prompt injection
-	GroupWriterCache *store.GroupWriterCache
+	// Config permission store for group file writer checks
+	ConfigPermStore store.ConfigPermissionStore
 
 	// Team store for cross-session pending task detection
 	TeamStore store.TeamStore
@@ -247,10 +256,13 @@ type LoopConfig struct {
 
 	// Budget enforcement
 	BudgetMonthlyCents int
-	TracingStore       store.TracingStore
+	TracingStore store.TracingStore
+
+	// Memory store for extractive memory fallback (writes directly when LLM flush fails)
+	MemoryStore store.MemoryStore
 }
 
-const defaultMaxTokens = 8192
+const defaultMaxTokens = config.DefaultMaxTokens
 
 // effectiveMaxTokens returns the configured max output tokens, defaulting to 8192.
 func (l *Loop) effectiveMaxTokens() int {
@@ -262,10 +274,10 @@ func (l *Loop) effectiveMaxTokens() int {
 
 func NewLoop(cfg LoopConfig) *Loop {
 	if cfg.MaxIterations <= 0 {
-		cfg.MaxIterations = 20
+		cfg.MaxIterations = config.DefaultMaxIterations
 	}
 	if cfg.ContextWindow <= 0 {
-		cfg.ContextWindow = 200000
+		cfg.ContextWindow = config.DefaultContextWindow
 	}
 
 	// Normalize injection action (default: "warn")
@@ -319,6 +331,7 @@ func NewLoop(cfg LoopConfig) *Loop {
 		sandboxEnabled:         cfg.SandboxEnabled,
 		sandboxContainerDir:    cfg.SandboxContainerDir,
 		sandboxWorkspaceAccess: cfg.SandboxWorkspaceAccess,
+		shellDenyGroups:        cfg.ShellDenyGroups,
 		traceCollector:         cfg.TraceCollector,
 		inputGuard:             guard,
 		injectionAction:        action,
@@ -328,13 +341,14 @@ func NewLoop(cfg LoopConfig) *Loop {
 		selfEvolve:             cfg.SelfEvolve,
 		skillEvolve:            cfg.SkillEvolve,
 		skillNudgeInterval:     cfg.SkillNudgeInterval,
-		groupWriterCache:       cfg.GroupWriterCache,
+		configPermStore:        cfg.ConfigPermStore,
 		teamStore:              cfg.TeamStore,
 		secureCLIStore:         cfg.SecureCLIStore,
 		mediaStore:             cfg.MediaStore,
 		modelPricing:           cfg.ModelPricing,
 		budgetMonthlyCents:     cfg.BudgetMonthlyCents,
 		tracingStore:           cfg.TracingStore,
+		memStore:               cfg.MemoryStore,
 	}
 }
 
@@ -363,6 +377,8 @@ type RunRequest struct {
 	TraceName         string          // override trace name (default: "chat <agentID>")
 	TraceTags         []string        // additional tags for the trace (e.g. "cron")
 	MaxIterations     int             // per-request override (0 = use agent default, must be lower)
+	ModelOverride     string          // per-request model override (heartbeat uses cheaper model)
+	LightContext      bool            // skip loading context files (only inject ExtraSystemPrompt)
 
 	// Run classification
 	RunKind       string // "delegation", "announce" — empty for user-initiated runs
@@ -404,5 +420,6 @@ type RunResult struct {
 type MediaResult struct {
 	Path        string `json:"path"`                   // local file path
 	ContentType string `json:"content_type,omitempty"` // MIME type
+	Size        int64  `json:"size,omitempty"`          // file size in bytes
 	AsVoice     bool   `json:"as_voice,omitempty"`     // send as voice message (Telegram OGG)
 }

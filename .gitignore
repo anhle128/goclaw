@@ -55,3 +55,6 @@ openspec
 .github/skills
 
 repomix-output.xml
+# AI tool config directories (user-specific)
+.gemini/
+.opencode/

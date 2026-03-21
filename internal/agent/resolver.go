@@ -75,8 +75,8 @@ type ResolverDeps struct {
 	// Skill access store — for per-agent skill visibility filtering
 	SkillAccessStore store.SkillAccessStore
 
-	// Group file writer cache
-	GroupWriterCache *store.GroupWriterCache
+	// Config permission store for group file writer checks
+	ConfigPermStore store.ConfigPermissionStore
 
 	// Persistent media storage for cross-turn image/document access
 	MediaStore *media.Store
@@ -86,6 +86,9 @@ type ResolverDeps struct {
 
 	// Tracing store for budget enforcement queries
 	TracingStore store.TracingStore
+
+	// Memory store for extractive memory fallback
+	MemoryStore store.MemoryStore
 }
 
 // NewManagedResolver creates a ResolverFunc that builds Loops from DB agent data.
@@ -174,17 +177,17 @@ func NewManagedResolver(deps ResolverDeps) ResolverFunc {
 		if !hasTeam {
 			contextFiles = append(contextFiles, bootstrap.ContextFile{
 				Path:    bootstrap.AvailabilityFile,
-				Content: "You are NOT part of any team. Do not use team_tasks or team_message tools.",
+				Content: "You are NOT part of any team. Do not use team_tasks tool.",
 			})
 		}
 
 		contextWindow := ag.ContextWindow
 		if contextWindow <= 0 {
-			contextWindow = 200000
+			contextWindow = config.DefaultContextWindow
 		}
 		maxIter := ag.MaxToolIterations
 		if maxIter <= 0 {
-			maxIter = 20
+			maxIter = config.DefaultMaxIterations
 		}
 
 		// Per-agent config overrides (fallback to global defaults from config.json)
@@ -345,16 +348,18 @@ func NewManagedResolver(deps ResolverDeps) ResolverFunc {
 			BuiltinToolSettings:    builtinSettings,
 			ThinkingLevel:          ag.ParseThinkingLevel(),
 			SelfEvolve:             ag.ParseSelfEvolve(),
-			SkillEvolve:            ag.AgentType == "predefined" && ag.ParseSkillEvolve(),
+			SkillEvolve:            ag.AgentType == store.AgentTypePredefined && ag.ParseSkillEvolve(),
 			SkillNudgeInterval:     ag.ParseSkillNudgeInterval(),
 			WorkspaceSharing:       ag.ParseWorkspaceSharing(),
-			GroupWriterCache:       deps.GroupWriterCache,
+			ShellDenyGroups:        ag.ParseShellDenyGroups(),
+			ConfigPermStore:        deps.ConfigPermStore,
 			TeamStore:              deps.TeamStore,
 			SecureCLIStore:         deps.SecureCLIStore,
 			MediaStore:             deps.MediaStore,
 			ModelPricing:           deps.ModelPricing,
 			BudgetMonthlyCents:     derefInt(ag.BudgetMonthlyCents),
 			TracingStore:           deps.TracingStore,
+			MemoryStore:            deps.MemoryStore,
 		})
 
 		slog.Info("resolved agent from DB", "agent", agentKey, "model", ag.Model, "provider", ag.Provider)

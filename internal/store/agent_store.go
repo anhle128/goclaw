@@ -3,10 +3,26 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/nextlevelbuilder/goclaw/internal/config"
 )
+
+// sanitizeToolCallPrefix strips characters not in [a-z0-9_{}] from the prefix.
+// This matches the UI-side regex and prevents injection via direct API calls.
+func sanitizeToolCallPrefix(s string) string {
+	if s == "" {
+		return ""
+	}
+	var b strings.Builder
+	for _, r := range s {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '_' || r == '{' || r == '}' {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
 
 // Agent type constants.
 const (
@@ -61,6 +77,20 @@ func (a *AgentData) ParseToolsConfig() *config.ToolPolicySpec {
 	if json.Unmarshal(a.ToolsConfig, &c) != nil {
 		return nil
 	}
+	// Backward compat: migrate old "toolPrefix" key to "toolCallPrefix"
+	if c.ToolCallPrefix == "" {
+		var raw map[string]json.RawMessage
+		if json.Unmarshal(a.ToolsConfig, &raw) == nil {
+			if v, ok := raw["toolPrefix"]; ok {
+				var s string
+				if json.Unmarshal(v, &s) == nil && s != "" {
+					c.ToolCallPrefix = s
+				}
+			}
+		}
+	}
+	// Sanitize: only allow [a-z0-9_{}] to prevent injection via API bypass.
+	c.ToolCallPrefix = sanitizeToolCallPrefix(c.ToolCallPrefix)
 	return &c
 }
 
@@ -211,7 +241,8 @@ type WorkspaceSharingConfig struct {
 	SharedDM    bool     `json:"shared_dm"`
 	SharedGroup bool     `json:"shared_group"`
 	SharedUsers []string `json:"shared_users,omitempty"`
-	ShareMemory bool     `json:"share_memory"`
+	ShareMemory         bool `json:"share_memory"`
+	ShareKnowledgeGraph bool `json:"share_knowledge_graph"`
 }
 
 // ParseWorkspaceSharing extracts workspace_sharing from other_config JSONB.
@@ -226,10 +257,25 @@ func (a *AgentData) ParseWorkspaceSharing() *WorkspaceSharingConfig {
 	if json.Unmarshal(a.OtherConfig, &cfg) != nil || cfg.WS == nil {
 		return nil
 	}
-	if !cfg.WS.SharedDM && !cfg.WS.SharedGroup && len(cfg.WS.SharedUsers) == 0 && !cfg.WS.ShareMemory {
+	if !cfg.WS.SharedDM && !cfg.WS.SharedGroup && len(cfg.WS.SharedUsers) == 0 && !cfg.WS.ShareMemory && !cfg.WS.ShareKnowledgeGraph {
 		return nil
 	}
 	return cfg.WS
+}
+
+// ParseShellDenyGroups extracts shell_deny_groups from other_config JSONB.
+// Returns nil if not configured (all defaults apply).
+func (a *AgentData) ParseShellDenyGroups() map[string]bool {
+	if len(a.OtherConfig) == 0 {
+		return nil
+	}
+	var cfg struct {
+		ShellDenyGroups map[string]bool `json:"shell_deny_groups"`
+	}
+	if json.Unmarshal(a.OtherConfig, &cfg) != nil || len(cfg.ShellDenyGroups) == 0 {
+		return nil
+	}
+	return cfg.ShellDenyGroups
 }
 
 // AgentShareData represents an agent share grant.
@@ -298,12 +344,6 @@ type AgentStore interface {
 	ListUserInstances(ctx context.Context, agentID uuid.UUID) ([]UserInstanceData, error)
 	UpdateUserProfileMetadata(ctx context.Context, agentID uuid.UUID, userID string, metadata map[string]string) error
 
-	// Group file writers (allowlist for protected file edits in group chats)
-	IsGroupFileWriter(ctx context.Context, agentID uuid.UUID, groupID, userID string) (bool, error)
-	AddGroupFileWriter(ctx context.Context, agentID uuid.UUID, groupID, userID, displayName, username string) error
-	RemoveGroupFileWriter(ctx context.Context, agentID uuid.UUID, groupID, userID string) error
-	ListGroupFileWriters(ctx context.Context, agentID uuid.UUID, groupID string) ([]GroupFileWriterData, error)
-	ListGroupFileWriterGroups(ctx context.Context, agentID uuid.UUID) ([]GroupWriterGroupInfo, error)
 }
 
 // UserInstanceData represents a user instance for a predefined agent.
@@ -315,15 +355,3 @@ type UserInstanceData struct {
 	Metadata    map[string]string `json:"metadata,omitempty"`
 }
 
-// GroupFileWriterData represents a group file writer entry.
-type GroupFileWriterData struct {
-	UserID      string  `json:"user_id"`
-	DisplayName *string `json:"display_name,omitempty"`
-	Username    *string `json:"username,omitempty"`
-}
-
-// GroupWriterGroupInfo represents a group that has writers configured.
-type GroupWriterGroupInfo struct {
-	GroupID     string `json:"group_id"`
-	WriterCount int    `json:"writer_count"`
-}
