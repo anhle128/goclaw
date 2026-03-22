@@ -22,10 +22,10 @@ type ProvidersHandler struct {
 	secretStore     store.ConfigSecretsStore
 	token           string
 	providerReg     *providers.Registry
-	gatewayAddr     string                         // for injecting MCP bridge into Claude CLI providers
-	mcpLookup       providers.MCPServerLookup       // optional: resolves per-agent MCP servers
+	gatewayAddr     string                           // for injecting MCP bridge into Claude CLI providers
+	mcpLookup       providers.MCPServerLookup        // optional: resolves per-agent MCP servers
 	apiBaseFallback func(providerType string) string // optional: config/env fallback for api_base
-	cliMu           sync.Mutex                      // serializes Claude CLI provider create to prevent duplicates
+	cliMu           sync.Mutex                       // serializes Claude CLI provider create to prevent duplicates
 	msgBus          *bus.MessageBus
 }
 
@@ -106,15 +106,9 @@ func maskAPIKey(p *store.LLMProviderData) {
 }
 
 // registryNameForProvider returns the in-memory registry name for a provider.
-// Some provider types (e.g. anthropic-oauth) share a single registry entry
-// under a canonical name that differs from the DB name.
+// Each provider registers under its DB name via WithAnthropicName / provider.Name().
 func registryNameForProvider(p *store.LLMProviderData) string {
-	switch p.ProviderType {
-	case store.ProviderAnthropicNative, store.ProviderAnthropicOAuth:
-		return "anthropic"
-	default:
-		return p.Name
-	}
+	return p.Name
 }
 
 // registerInMemory adds (or replaces) a provider in the in-memory registry
@@ -154,6 +148,7 @@ func (h *ProvidersHandler) registerInMemory(p *store.LLMProviderData) {
 		h.providerReg.Register(providers.NewCodexProvider(p.Name, ts, apiBase, ""))
 	case store.ProviderAnthropicNative, store.ProviderAnthropicOAuth:
 		h.providerReg.Register(providers.NewAnthropicProvider(p.APIKey,
+			providers.WithAnthropicName(p.Name),
 			providers.WithAnthropicBaseURL(apiBase)))
 	case store.ProviderDashScope:
 		h.providerReg.Register(providers.NewDashScopeProvider(p.Name, p.APIKey, apiBase, ""))
