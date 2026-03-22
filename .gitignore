@@ -46,6 +46,12 @@ k8s-*/*
 tests/**/creds.json
 ui/simple-saas
 *.tar
+
 # AI tool config directories (user-specific)
 .gemini/
 .opencode/
+openspec/
+.serena/
+.github/prompts
+.github/skills
+repomix-output.xml
