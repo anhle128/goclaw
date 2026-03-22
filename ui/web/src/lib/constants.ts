@@ -1,7 +1,8 @@
 export const ROUTES = {
   LOGIN: "/login",
   OVERVIEW: "/overview",
-  CHAT: "/chat/:sessionKey?",
+  CHAT: "/chat",
+  CHAT_PATTERN: "/chat/:sessionKey?",
   AGENTS: "/agents",
   AGENT_DETAIL: "/agents/:id",
   SESSIONS: "/sessions",
