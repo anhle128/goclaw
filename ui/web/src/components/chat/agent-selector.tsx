@@ -39,7 +39,7 @@ export function AgentSelector({ value, onChange }: AgentSelectorProps) {
         }
       })
       .catch(() => {});
-  }, [http, connected]);
+  }, [http, connected, value, onChange]);
 
   useLayoutEffect(() => {
     if (!open || !containerRef.current) return;
