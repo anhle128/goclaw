@@ -139,8 +139,7 @@ export function ProviderFormDialog({ open, onOpenChange, onSubmit, existingProvi
         </DialogHeader>
         <div className="-mx-4 min-h-0 overflow-y-auto px-4 py-4 sm:-mx-6 sm:px-6 space-y-4">
           {/* Provider type selector — always shown in create mode */}
-          {!isEdit && (
-            <ProviderTypeSelect
+          <ProviderTypeSelect
               value={providerType}
               hasClaudeCLI={hasClaudeCLI}
               alreadyAddedLabel={t("form.alreadyAdded")}
@@ -163,7 +162,6 @@ export function ProviderFormDialog({ open, onOpenChange, onSubmit, existingProvi
                 }
               }}
             />
-          )}
 
           {isOAuth ? (
             <>
@@ -247,17 +245,12 @@ export function ProviderFormDialog({ open, onOpenChange, onSubmit, existingProvi
                       type="password"
                       value={apiKey}
                       onChange={(e) => setApiKey(e.target.value)}
-                      placeholder={isAnthropicOAuth ? "sk-ant-oat01-..." : isEdit ? t("form.apiKeyEditPlaceholder") : t("form.apiKeyPlaceholder")}
+                      placeholder={isAnthropicOAuth ? "sk-ant-oat01-..." : t("form.apiKeyPlaceholder")}
                       className="text-base md:text-sm"
                     />
                     {isAnthropicOAuth && (
                       <p className="text-xs text-muted-foreground">
                         {t("form.setupTokenHint")}
-                      </p>
-                    )}
-                    {isEdit && apiKey === "***" && !isAnthropicOAuth && (
-                      <p className="text-xs text-muted-foreground">
-                        {t("form.apiKeySetHint")}
                       </p>
                     )}
                   </div>
