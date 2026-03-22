@@ -18,6 +18,7 @@
   "provider": {
     "title": "配置 LLM Provider",
     "descriptionCli": "使用本地 Claude CLI 连接，无需 API 密钥。",
+    "descriptionOauth": "使用 ChatGPT 账号登录，通过 OAuth 使用您的订阅。无需 API 密钥。",
     "description": "连接 AI Provider为您的Agent提供支持，需要 API 密钥。",
     "providerType": "Provider类型",
     "providerTypeHint": "您要连接的 LLM 服务。推荐使用 OpenRouter 以访问多种模型。",
@@ -25,12 +26,15 @@
     "nameHint": "此Provider的内部标识符，根据Provider类型自动生成。",
     "apiKey": "API 密钥 *",
     "apiKeyHint": "您的Provider密钥，服务端加密存储，不会在 API 响应中暴露。",
+    "apiKeyHintOAuth": "在终端运行 'claude setup-token' 获取 OAuth 令牌。您的 Provider 机密 OAuth 令牌，服务端加密存储，不会在 API 响应中暴露。",
+    "setupToken": "设置令牌",
     "apiBase": "API 基础 URL",
     "apiBaseHint": "API 请求的端点 URL，根据Provider类型自动填充，仅在使用自定义代理时覆盖。",
     "creating": "创建中...",
     "create": "创建Provider",
     "errors": {
       "apiKeyRequired": "API 密钥为必填项",
+      "oauthProviderNotFound": "OAuth 认证成功，但未找到 Provider。请重试。",
       "failedCreate": "创建Provider失败"
     }
   },

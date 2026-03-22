@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -18,7 +19,29 @@ func (t *TeamTasksTool) executeCreate(ctx context.Context, args map[string]any) 
 	if err != nil {
 		return ErrorResult(err.Error())
 	}
-	if err := t.manager.requireLead(ctx, team, agentID); err != nil {
+
+	// Determine if caller is a lead or a member.
+	isLead := agentID == team.LeadAgentID
+	channel := ToolChannelFromCtx(ctx)
+	if channel == ChannelTeammate || channel == ChannelSystem {
+		isLead = true // system/teammate channels act on behalf of the lead
+	}
+
+	taskType, _ := args["task_type"].(string)
+	if taskType == "" {
+		taskType = "general"
+	}
+
+	if !isLead {
+		// Members may only create "request" tasks when the feature is enabled.
+		memberCfg := ParseMemberRequestConfig(team.Settings)
+		if !memberCfg.Enabled {
+			return ErrorResult("Members cannot create tasks. Use team_tasks(action=\"comment\") to communicate.")
+		}
+		if taskType != "request" {
+			return ErrorResult("Members can only create task_type=\"request\". Use team_tasks(action=\"comment\") to communicate.")
+		}
+	} else if err := t.manager.requireLead(ctx, team, agentID); err != nil {
 		return ErrorResult(err.Error())
 	}
 
@@ -105,6 +128,10 @@ func (t *TeamTasksTool) executeCreate(ctx context.Context, args map[string]any) 
 	// Assigned tasks without blockers stay pending — dispatched after the turn
 	// ends via post-turn processing (avoids race with blocked_by setup).
 
+	// Member requests without auto_dispatch stay pending for leader review.
+	memberCfgForDispatch := ParseMemberRequestConfig(team.Settings)
+	skipAutoDispatch := !isLead && taskType == "request" && !memberCfgForDispatch.AutoDispatch
+
 	chatID := ToolChatIDFromCtx(ctx)
 
 	// Shared workspace: scope by teamID only. Isolated (default): scope by chatID too.
@@ -119,6 +146,32 @@ func (t *TeamTasksTool) executeCreate(ctx context.Context, args map[string]any) 
 	if teamWsDir, err := WorkspaceDir(t.manager.dataDir, team.ID, wsChat); err == nil {
 		taskMeta["team_workspace"] = teamWsDir
 	}
+	// Auto-collect media files from current run to team workspace.
+	// When leader received files from user and creates a task, copy those
+	// files to the team workspace so members can access them via read_file.
+	// Also rewrite any media paths in the description to point to the workspace copy,
+	// since members can't access the original .media/ paths outside their workspace.
+	if mediaPaths := RunMediaPathsFromCtx(ctx); len(mediaPaths) > 0 {
+		if wsDir, _ := taskMeta["team_workspace"].(string); wsDir != "" {
+			nameMap := RunMediaNamesFromCtx(ctx)
+			if copiedPaths := copyMediaToWorkspace(mediaPaths, wsDir, nameMap); len(copiedPaths) > 0 {
+				// Store as []any so type assertion works both before and after JSON round-trip.
+				files := make([]any, len(copiedPaths))
+				for i, p := range copiedPaths {
+					files[i] = p
+				}
+				taskMeta["attached_files"] = files
+
+				// Rewrite media paths in description so members see workspace paths.
+				for i, src := range mediaPaths {
+					if i < len(copiedPaths) {
+						description = strings.ReplaceAll(description, src, copiedPaths[i])
+					}
+				}
+			}
+		}
+	}
+
 	// Preserve original blocked_by list for blocker-result forwarding when task unblocks.
 	if len(blockedBy) > 0 {
 		ids := make([]string, len(blockedBy))
@@ -134,6 +187,11 @@ func (t *TeamTasksTool) executeCreate(ctx context.Context, args map[string]any) 
 	// Store local key so forum-topic routing works on deferred/unblocked dispatches.
 	if lk := ToolLocalKeyFromCtx(ctx); lk != "" {
 		taskMeta["local_key"] = lk
+	}
+	// Store origin session key so deferred dispatches route announces correctly.
+	// WS sessions use non-standard key format that BuildScopedSessionKey() cannot reproduce.
+	if sk := ToolSessionKeyFromCtx(ctx); sk != "" {
+		taskMeta["origin_session_key"] = sk
 	}
 	// Store leader's trace context so unblocked dispatch links back to the leader's trace.
 	if traceID := tracing.TraceIDFromContext(ctx); traceID != uuid.Nil {
@@ -152,12 +210,21 @@ func (t *TeamTasksTool) executeCreate(ctx context.Context, args map[string]any) 
 		Priority:         priority,
 		UserID:           store.UserIDFromContext(ctx),
 		Channel:          ToolChannelFromCtx(ctx),
-		TaskType:         "general",
+		TaskType:         taskType,
 		CreatedByAgentID: &agentID,
 		ChatID:           chatID,
 		Metadata:         taskMeta,
 	}
 	task.OwnerAgentID = &assigneeID
+
+	// Auto-link member request to the member's current task as parent.
+	if !isLead && taskType == "request" {
+		if parentIDStr := TeamTaskIDFromCtx(ctx); parentIDStr != "" {
+			if parentUUID, err := uuid.Parse(parentIDStr); err == nil {
+				task.ParentID = &parentUUID
+			}
+		}
+	}
 
 	if err := t.manager.teamStore.CreateTask(ctx, task); err != nil {
 		return ErrorResult("failed to create task: " + err.Error())
@@ -177,7 +244,8 @@ func (t *TeamTasksTool) executeCreate(ctx context.Context, args map[string]any) 
 		ActorID:   agentKey,
 	})
 	// Track for post-turn dispatch. If no post-turn hook (e.g. HTTP API), dispatch immediately.
-	if status == store.TeamTaskStatusPending {
+	// Member requests with auto_dispatch=false stay pending for leader review — skip dispatch.
+	if status == store.TeamTaskStatusPending && !skipAutoDispatch {
 		if ptd := PendingTeamDispatchFromCtx(ctx); ptd != nil {
 			ptd.Add(team.ID, task.ID)
 		} else {
@@ -247,12 +315,17 @@ func (t *TeamTasksTool) executeComment(ctx context.Context, args map[string]any)
 	}
 
 	t.manager.broadcastTeamEvent(protocol.EventTeamTaskCommented, protocol.TeamTaskEventPayload{
-		TeamID:    team.ID.String(),
-		TaskID:    taskID.String(),
-		UserID:    store.UserIDFromContext(ctx),
-		Channel:   ToolChannelFromCtx(ctx),
-		ChatID:    ToolChatIDFromCtx(ctx),
-		Timestamp: time.Now().UTC().Format("2006-01-02T15:04:05Z"),
+		TeamID:      team.ID.String(),
+		TaskID:      taskID.String(),
+		TaskNumber:  task.TaskNumber,
+		Subject:     task.Subject,
+		CommentText: truncatePreview(text, 500),
+		UserID:      store.UserIDFromContext(ctx),
+		Channel:     ToolChannelFromCtx(ctx),
+		ChatID:      ToolChatIDFromCtx(ctx),
+		Timestamp:   time.Now().UTC().Format("2006-01-02T15:04:05Z"),
+		ActorType:   "agent",
+		ActorID:     t.manager.agentKeyFromID(ctx, agentID),
 	})
 
 	return NewResult(fmt.Sprintf("Comment added to task %s.", taskID))
@@ -288,6 +361,11 @@ func (t *TeamTasksTool) executeProgress(ctx context.Context, args map[string]any
 	}
 	if task.OwnerAgentID == nil || *task.OwnerAgentID != agentID {
 		return ErrorResult("only the assigned task owner can update progress. As team lead, task results arrive automatically when members complete their work.")
+	}
+
+	// Prevent progress regression — keep the higher value.
+	if percent < task.ProgressPercent {
+		percent = task.ProgressPercent
 	}
 
 	if err := t.manager.teamStore.UpdateTaskProgress(ctx, taskID, team.ID, percent, step); err != nil {
@@ -327,13 +405,9 @@ func (t *TeamTasksTool) executeAttach(ctx context.Context, args map[string]any) 
 		return ErrorResult(err.Error())
 	}
 
-	fileIDStr, _ := args["file_id"].(string)
-	if fileIDStr == "" {
-		return ErrorResult("file_id is required for attach action")
-	}
-	fileID, err := uuid.Parse(fileIDStr)
-	if err != nil {
-		return ErrorResult("invalid file_id")
+	filePath, _ := args["path"].(string)
+	if filePath == "" {
+		return ErrorResult("path is required for attach action")
 	}
 
 	// Verify task belongs to team.
@@ -345,10 +419,13 @@ func (t *TeamTasksTool) executeAttach(ctx context.Context, args map[string]any) 
 		return ErrorResult("task does not belong to your team")
 	}
 
+	chatID := ToolChatIDFromCtx(ctx)
 	if err := t.manager.teamStore.AttachFileToTask(ctx, &store.TeamTaskAttachmentData{
-		TaskID:  taskID,
-		FileID:  fileID,
-		AddedBy: &agentID,
+		TaskID:           taskID,
+		TeamID:           team.ID,
+		ChatID:           chatID,
+		Path:             filePath,
+		CreatedByAgentID: &agentID,
 	}); err != nil {
 		return ErrorResult("failed to attach file: " + err.Error())
 	}

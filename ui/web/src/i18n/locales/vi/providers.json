@@ -17,7 +17,17 @@
   },
   "apiKey": {
     "oauthToken": "OAuth Token",
+    "expires": "Hết hạn: {{date}}",
     "notSet": "Chưa thiết lập"
+  },
+  "card": {
+    "apiKeySet": "Đã đặt API key",
+    "authenticated": "Đã xác thực",
+    "oauthLinked": "Đã liên kết OAuth"
+  },
+  "detail": {
+    "title": "Chi tiết Provider",
+    "advanced": "Nâng cao"
   },
   "form": {
     "createTitle": "Thêm provider",
@@ -44,7 +54,13 @@
     "alreadyAdded": "(đã thêm)",
     "nameFixed": "Tên",
     "configure": "Cấu hình kết nối provider LLM.",
-    "lowercaseHint": "Chữ thường, số, dấu gạch ngang"
+    "lowercaseHint": "Chữ thường, số, dấu gạch ngang",
+    "setupToken": "Setup Token",
+    "setupTokenHint": "Chạy 'claude setup-token' trong terminal để lấy OAuth token. Token OAuth bí mật của provider. Được mã hóa phía máy chủ và không bao giờ lộ ra trong phản hồi API.",
+    "setupTokenHintTooltip": "Chạy 'claude setup-token' trong terminal để lấy OAuth token. Token OAuth bí mật của provider. Được mã hóa phía máy chủ và không bao giờ lộ ra trong phản hồi API.",
+    "apiKeyHint": "Khóa bí mật của provider. Được mã hóa phía máy chủ và không bao giờ lộ ra trong phản hồi API.",
+    "setupTokenInvalidPrefix": "Setup token phải bắt đầu bằng sk-ant-oat01-",
+    "setupTokenTooShort": "Setup token quá ngắn (tối thiểu 80 ký tự)"
   },
   "delete": {
     "title": "Xóa provider",
@@ -64,6 +80,7 @@
     "cohere": "Cohere",
     "perplexity": "Perplexity",
     "chatgpt_oauth": "ChatGPT (OAuth)",
+    "anthropic_oauth": "Anthropic (OAuth Token)",
     "yescale": "YesScale",
     "acp": "ACP"
   },
@@ -106,7 +123,7 @@
     "starting": "Đang bắt đầu...",
     "remoteVps": "Remote/VPS?",
     "loggedOut": "Đã đăng xuất",
-    "loggedOutDesc": "Đã xóa OAuth token OpenAI",
+    "loggedOutDesc": "Đã xóa OAuth Token OpenAI",
     "oauthFailed": "OAuth thất bại",
     "exchangeFailed": "Trao đổi thất bại",
     "logoutFailed": "Đăng xuất thất bại"
@@ -123,6 +140,26 @@
     "notAuthenticated": "Chưa xác thực",
     "runOnServer": "Chạy trên terminal máy chủ:",
     "recheckButton": "Kiểm tra lại"
+  },
+  "detail": {
+    "advanced": "Nâng cao",
+    "identity": "Danh tính",
+    "identityDesc": "Nhận dạng provider",
+    "connection": "Kết nối",
+    "connectionDesc": "Cấu hình endpoint API",
+    "acpConfig": "Cấu hình ACP",
+    "acpConfigDesc": "Cài đặt tiến trình con agent",
+    "cliConfig": "Claude CLI",
+    "cliConfigDesc": "Xác thực CLI cục bộ",
+    "oauthConfig": "OAuth",
+    "oauthConfigDesc": "Xác thực OAuth ChatGPT",
+    "nameReadonly": "Định danh provider, không thể thay đổi",
+    "providerType": "Loại provider",
+    "apiKeySection": "API Key",
+    "apiKeySectionDesc": "Thông tin xác thực",
+    "statusSection": "Trạng thái",
+    "statusSectionDesc": "Tình trạng hoạt động của provider",
+    "enabledDesc": "Provider đang hoạt động và sẵn sàng cho các agent"
   },
   "toast": {
     "created": "Đã tạo provider",

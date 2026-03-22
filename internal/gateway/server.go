@@ -48,6 +48,7 @@ type Server struct {
 	providersHandler        *httpapi.ProvidersHandler        // provider CRUD API
 	delegationsHandler      *httpapi.DelegationsHandler      // delegation history API
 	teamEventsHandler       *httpapi.TeamEventsHandler       // team event history API
+	teamAttachmentsHandler  *httpapi.TeamAttachmentsHandler  // team attachment download API
 	builtinToolsHandler     *httpapi.BuiltinToolsHandler     // builtin tool management API
 	pendingMessagesHandler  *httpapi.PendingMessagesHandler  // pending messages API
 	secureCLIHandler       *httpapi.SecureCLIHandler        // secure CLI credential CRUD API
@@ -55,6 +56,7 @@ type Server struct {
 	memoryHandler           *httpapi.MemoryHandler           // memory management API
 	kgHandler               *httpapi.KnowledgeGraphHandler   // knowledge graph API
 	oauthHandler            *httpapi.OAuthHandler            // OAuth endpoints
+	anthropicAuthHandler    *httpapi.AnthropicAuthHandler    // Anthropic setup token endpoints
 	filesHandler            *httpapi.FilesHandler            // workspace file serving
 	storageHandler          *httpapi.StorageHandler          // storage file management
 	mediaUploadHandler      *httpapi.MediaUploadHandler      // media upload endpoint
@@ -76,10 +78,16 @@ type Server struct {
 	version   string
 	db        interface{ PingContext(context.Context) error } // for health check DB ping
 
-	logTee *LogTee // optional; auto-unsubscribes clients on disconnect
+	logTee   *LogTee                  // optional; auto-unsubscribes clients on disconnect
+	postTurn tools.PostTurnProcessor // optional; for team task dispatch in HTTP API paths
 
 	httpServer *http.Server
 	mux        *http.ServeMux
+}
+
+// SetPostTurnProcessor sets the post-turn processor for team task dispatch in HTTP API handlers.
+func (s *Server) SetPostTurnProcessor(pt tools.PostTurnProcessor) {
+	s.postTurn = pt
 }
 
 // NewServer creates a new gateway server.
@@ -158,10 +166,16 @@ func (s *Server) BuildMux() *http.ServeMux {
 	if s.rateLimiter.Enabled() {
 		chatHandler.SetRateLimiter(s.rateLimiter.Allow)
 	}
+	if s.postTurn != nil {
+		chatHandler.SetPostTurnProcessor(s.postTurn)
+	}
 	mux.Handle("/v1/chat/completions", chatHandler)
 
 	// OpenResponses protocol
 	responsesHandler := httpapi.NewResponsesHandler(s.agents, s.sessions, s.cfg.Gateway.Token)
+	if s.postTurn != nil {
+		responsesHandler.SetPostTurnProcessor(s.postTurn)
+	}
 	mux.Handle("/v1/responses", responsesHandler)
 
 	// Direct tool invocation
@@ -223,6 +237,11 @@ func (s *Server) BuildMux() *http.ServeMux {
 	// Team event history API
 	if s.teamEventsHandler != nil {
 		s.teamEventsHandler.RegisterRoutes(mux)
+	}
+
+	// Team attachment download API
+	if s.teamAttachmentsHandler != nil {
+		s.teamAttachmentsHandler.RegisterRoutes(mux)
 	}
 
 	// Builtin tool management API
@@ -289,6 +308,9 @@ func (s *Server) BuildMux() *http.ServeMux {
 	// OAuth endpoints (available in all modes)
 	if s.oauthHandler != nil {
 		s.oauthHandler.RegisterRoutes(mux)
+	}
+	if s.anthropicAuthHandler != nil {
+		s.anthropicAuthHandler.RegisterRoutes(mux)
 	}
 
 	// MCP bridge: expose GoClaw tools to Claude CLI via streamable-http.
@@ -486,6 +508,11 @@ func (s *Server) SetDelegationsHandler(h *httpapi.DelegationsHandler) { s.delega
 // SetTeamEventsHandler sets the team event history handler.
 func (s *Server) SetTeamEventsHandler(h *httpapi.TeamEventsHandler) { s.teamEventsHandler = h }
 
+// SetTeamAttachmentsHandler sets the team attachment download handler.
+func (s *Server) SetTeamAttachmentsHandler(h *httpapi.TeamAttachmentsHandler) {
+	s.teamAttachmentsHandler = h
+}
+
 // SetPendingMessagesHandler sets the pending messages handler.
 func (s *Server) SetPendingMessagesHandler(h *httpapi.PendingMessagesHandler) {
 	s.pendingMessagesHandler = h
@@ -504,6 +531,11 @@ func (s *Server) SetPackagesHandler(h *httpapi.PackagesHandler) { s.packagesHand
 
 // SetOAuthHandler sets the OAuth handler (available in all modes).
 func (s *Server) SetOAuthHandler(h *httpapi.OAuthHandler) { s.oauthHandler = h }
+
+// SetAnthropicAuthHandler sets the Anthropic setup token handler.
+func (s *Server) SetAnthropicAuthHandler(h *httpapi.AnthropicAuthHandler) {
+	s.anthropicAuthHandler = h
+}
 
 // SetAPIKeysHandler sets the API key management handler.
 func (s *Server) SetAPIKeysHandler(h *httpapi.APIKeysHandler) { s.apiKeysHandler = h }
@@ -639,9 +671,15 @@ func StartTestServer(s *Server, ctx context.Context) (addr string, start func())
 	if s.rateLimiter.Enabled() {
 		chatHandler.SetRateLimiter(s.rateLimiter.Allow)
 	}
+	if s.postTurn != nil {
+		chatHandler.SetPostTurnProcessor(s.postTurn)
+	}
 	mux.Handle("/v1/chat/completions", chatHandler)
 
 	responsesHandler := httpapi.NewResponsesHandler(s.agents, s.sessions, s.cfg.Gateway.Token)
+	if s.postTurn != nil {
+		responsesHandler.SetPostTurnProcessor(s.postTurn)
+	}
 	mux.Handle("/v1/responses", responsesHandler)
 
 	if s.tools != nil {

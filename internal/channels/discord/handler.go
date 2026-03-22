@@ -62,6 +62,11 @@ func (c *Channel) handleMessage(_ *discordgo.Session, m *discordgo.MessageCreate
 		return
 	}
 
+	// Handle bot commands (writer management, etc.) before further processing.
+	if c.tryHandleCommand(m) {
+		return
+	}
+
 	// Build content
 	content := m.Content
 
@@ -245,6 +250,11 @@ func (c *Channel) handleMessage(_ *discordgo.Session, m *discordgo.MessageCreate
 				break
 			}
 		}
+	}
+
+	// Collect contact for processed messages (DM + group-mentioned).
+	if cc := c.ContactCollector(); cc != nil {
+		cc.EnsureContact(context.Background(), c.Type(), c.Name(), senderID, senderID, senderName, m.Author.Username, peerKind)
 	}
 
 	// Publish directly to bus (to preserve MediaFile MIME types)

@@ -12,61 +12,87 @@ import (
 // CronTool lets agents manage Gateway cron jobs.
 // Matching OpenClaw src/agents/tools/cron-tool.ts.
 type CronTool struct {
-	cronStore        store.CronStore
-	groupWriterCache *store.GroupWriterCache // nil = no group restriction
+	cronStore store.CronStore
+	permStore store.ConfigPermissionStore // nil = no group restriction
 }
 
 func NewCronTool(cronStore store.CronStore) *CronTool {
 	return &CronTool{cronStore: cronStore}
 }
 
-// SetGroupWriterCache enables group cron mutation restriction.
-func (t *CronTool) SetGroupWriterCache(c *store.GroupWriterCache) {
-	t.groupWriterCache = c
+// SetConfigPermStore enables group cron mutation restriction.
+func (t *CronTool) SetConfigPermStore(s store.ConfigPermissionStore) {
+	t.permStore = s
 }
 
 func (t *CronTool) Name() string { return "cron" }
 
 func (t *CronTool) Description() string {
-	return `Manage Gateway cron jobs (status/list/add/update/remove/run/runs).
+	return `Manage Gateway cron jobs.
+Always send a JSON object with an "action" field.
 
-ACTIONS:
-- status: Check cron scheduler status
-- list: List jobs (use includeDisabled:true to include disabled)
-- add: Create job (requires job object, see schema below)
-- update: Modify job (requires jobId + patch object)
-- remove: Delete job (requires jobId)
-- run: Trigger job immediately (requires jobId)
-- runs: Get job run history (requires jobId)
+VALID ACTIONS AND EXACT PAYLOAD SHAPES:
+1) status
+{ "action": "status" }
 
-JOB SCHEMA (for add action):
+2) list
+{ "action": "list", "includeDisabled": true|false }
+
+3) add
 {
-  "name": "string (required, lowercase slug)",
-  "schedule": { ... },      // Required: when to run
-  "message": "string",      // Required: what message to send to the agent
-  "deliver": true|false,    // Optional: deliver result to channel (default false)
-  "channel": "channel-name", // Optional: target channel for delivery (auto-filled from context)
-  "to": "chat-id",          // Optional: target chat/recipient ID
-  "agentId": "agent-uuid",  // Optional: which agent handles the job (default: current)
-  "deleteAfterRun": true    // Optional: auto-delete after execution (default true for "at" schedule)
+  "action": "add",
+  "job": {
+    "name": "string",             // required, lowercase slug: [a-z0-9-]+
+    "schedule": { ... },          // required
+    "message": "string",          // required
+    "deliver": true|false,        // optional, default false
+    "channel": "string",          // optional, auto-filled from current channel context
+    "to": "string",               // optional
+    "agentId": "string",          // optional, defaults to current agent
+    "deleteAfterRun": true|false  // optional, default true for schedule.kind="at"
+  }
 }
 
-SCHEDULE TYPES (schedule.kind):
-- "at": One-shot at absolute time
-  { "kind": "at", "atMs": <unix-milliseconds> }
-- "every": Recurring interval
-  { "kind": "every", "everyMs": <interval-ms> }
-- "cron": Cron expression
-  { "kind": "cron", "expr": "<5-field cron expression>", "tz": "<optional IANA timezone, e.g. Asia/Ho_Chi_Minh; omit to use gateway default>" }
+4) update
+{
+  "action": "update",
+  "jobId": "string",
+  "patch": {
+    "name": "string",
+    "schedule": { ... },
+    "message": "string",
+    "deliver": true|false,
+    "channel": "string",
+    "to": "string",
+    "agentId": "string",
+    "deleteAfterRun": true|false,
+    "disabled": true|false
+  }
+}
 
-CRITICAL CONSTRAINTS:
-- name must be a valid slug (lowercase letters, numbers, hyphens only)
-- message is required for add action
-- schedule is required for add action
-- Default: jobs run as isolated agent turns with the specified message
-- Before creating or updating a scheduled job, call the datetime tool first to get the precise current time and unix_ms timestamp. Do NOT guess or estimate timestamps.
+5) remove
+{ "action": "remove", "jobId": "string" }
 
-Use jobId as the canonical identifier; id is accepted for compatibility.`
+6) run
+{ "action": "run", "jobId": "string" }
+
+7) runs
+{ "action": "runs", "jobId": "string" }
+
+SCHEDULE SCHEMA:
+- at: { "kind": "at", "atMs": <unix-milliseconds> }
+- every: { "kind": "every", "everyMs": <interval-ms> }
+- cron: { "kind": "cron", "expr": "<5-field cron>", "tz": "<IANA timezone, e.g. Asia/Ho_Chi_Minh; omit for gateway default>" }
+
+RULES:
+- For action="add", send the job inside "job". Do not place job fields at the root level.
+- For action="update", send changes inside "patch". Do not place patch fields at the root level.
+- Always use "jobId". Do not use "id".
+- "name", "schedule", and "message" are required for add.
+- "name" must match: lowercase letters, numbers, hyphens only.
+- Before creating or updating a scheduled job, call the datetime tool first to get the precise current time and unix_ms timestamp. Never guess timestamps.
+- Omit optional fields when unknown; do not invent placeholder values like "", 0, or null unless required.
+- Jobs run as isolated agent turns using the provided "message".`
 }
 
 func (t *CronTool) Parameters() map[string]any {
@@ -117,8 +143,8 @@ func (t *CronTool) Execute(ctx context.Context, args map[string]any) *Result {
 	}
 
 	// Group write permission check for mutation actions
-	if t.groupWriterCache != nil && (action == "add" || action == "update" || action == "remove") {
-		if err := store.CheckGroupWritePermission(ctx, t.groupWriterCache); err != nil {
+	if t.permStore != nil && (action == "add" || action == "update" || action == "remove") {
+		if err := store.CheckFileWriterPermission(ctx, t.permStore); err != nil {
 			return ErrorResult("permission denied: only file writers can manage cron jobs in group chats")
 		}
 	}
@@ -265,6 +291,14 @@ func (t *CronTool) handleAdd(ctx context.Context, args map[string]any, agentID, 
 	job, err := t.cronStore.AddJob(name, schedule, message, deliver, channel, to, agentID, userID)
 	if err != nil {
 		return ErrorResult(fmt.Sprintf("failed to create cron job: %v", err))
+	}
+
+	// Set wake_heartbeat if requested (triggers heartbeat after cron job completes)
+	if wh, _ := jobObj["wake_heartbeat"].(bool); wh {
+		wakeTrue := true
+		if updated, uErr := t.cronStore.UpdateJob(job.ID, store.CronJobPatch{WakeHeartbeat: &wakeTrue}); uErr == nil {
+			job = updated
+		}
 	}
 
 	data, _ := json.MarshalIndent(map[string]any{"job": job}, "", "  ")

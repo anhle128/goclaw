@@ -17,7 +17,17 @@
   },
   "apiKey": {
     "oauthToken": "OAuth Token",
+    "expires": "Expires: {{date}}",
     "notSet": "Not set"
+  },
+  "card": {
+    "apiKeySet": "API key set",
+    "authenticated": "Authenticated",
+    "oauthLinked": "OAuth linked"
+  },
+  "detail": {
+    "title": "Provider Details",
+    "advanced": "Advanced"
   },
   "form": {
     "createTitle": "Add Provider",
@@ -44,7 +54,13 @@
     "alreadyAdded": "(already added)",
     "nameFixed": "Name",
     "configure": "Configure an LLM provider connection.",
-    "lowercaseHint": "Lowercase, numbers, hyphens"
+    "lowercaseHint": "Lowercase, numbers, hyphens",
+    "setupToken": "Setup Token",
+    "setupTokenHint": "Run 'claude setup-token' in your terminal to get OAuth token. Your provider's secret OAuth token. Encrypted server-side and never exposed in API responses.",
+    "setupTokenHintTooltip": "Run 'claude setup-token' in your terminal to get OAuth token. Your provider's secret OAuth token. Encrypted server-side and never exposed in API responses.",
+    "apiKeyHint": "Your provider's secret key. Encrypted server-side and never exposed in API responses.",
+    "setupTokenInvalidPrefix": "Setup token must start with sk-ant-oat01-",
+    "setupTokenTooShort": "Setup token is too short (minimum 80 characters)"
   },
   "delete": {
     "title": "Delete Provider",
@@ -64,6 +80,7 @@
     "cohere": "Cohere",
     "perplexity": "Perplexity",
     "chatgpt_oauth": "ChatGPT (OAuth)",
+    "anthropic_oauth": "Anthropic (OAuth Token)",
     "yescale": "YesScale",
     "acp": "ACP"
   },
@@ -106,7 +123,7 @@
     "starting": "Starting...",
     "remoteVps": "Remote/VPS?",
     "loggedOut": "Logged out",
-    "loggedOutDesc": "OpenAI OAuth token removed",
+    "loggedOutDesc": "OpenAI OAuth Token removed",
     "oauthFailed": "OAuth failed",
     "exchangeFailed": "Exchange failed",
     "logoutFailed": "Logout failed"
@@ -123,6 +140,26 @@
     "notAuthenticated": "Not authenticated",
     "runOnServer": "Run on the server terminal:",
     "recheckButton": "Re-check"
+  },
+  "detail": {
+    "advanced": "Advanced",
+    "identity": "Identity",
+    "identityDesc": "Provider identification",
+    "connection": "Connection",
+    "connectionDesc": "API endpoint configuration",
+    "acpConfig": "ACP Configuration",
+    "acpConfigDesc": "Agent subprocess settings",
+    "cliConfig": "Claude CLI",
+    "cliConfigDesc": "Local CLI authentication",
+    "oauthConfig": "OAuth",
+    "oauthConfigDesc": "ChatGPT OAuth authentication",
+    "nameReadonly": "Provider identifier, cannot be changed",
+    "providerType": "Provider Type",
+    "apiKeySection": "API Key",
+    "apiKeySectionDesc": "Authentication credentials",
+    "statusSection": "Status",
+    "statusSectionDesc": "Provider availability",
+    "enabledDesc": "Provider is active and available for agents"
   },
   "toast": {
     "created": "Provider created",

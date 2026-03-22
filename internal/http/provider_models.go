@@ -63,7 +63,9 @@ func (h *ProvidersHandler) handleListProviderModels(w http.ResponseWriter, r *ht
 
 	switch p.ProviderType {
 	case "anthropic_native":
-		models, err = fetchAnthropicModels(ctx, p.APIKey, p.APIBase)
+		models, err = fetchAnthropicModels(ctx, p.APIKey, h.resolveAPIBase(p))
+	case "anthropic_oauth":
+		models = anthropicOAuthModels()
 	case "gemini_native":
 		models, err = fetchGeminiModels(ctx, p.APIKey)
 	case "bailian":
@@ -76,7 +78,7 @@ func (h *ProvidersHandler) handleListProviderModels(w http.ResponseWriter, r *ht
 		models = sunoModels()
 	default:
 		// All other types use OpenAI-compatible /models endpoint
-		apiBase := strings.TrimRight(p.APIBase, "/")
+		apiBase := strings.TrimRight(h.resolveAPIBase(p), "/")
 		if apiBase == "" {
 			apiBase = "https://api.openai.com/v1"
 		}
@@ -195,6 +197,7 @@ func minimaxModels() []ModelInfo {
 		// Chat / text
 		{ID: "MiniMax-Text-01", Name: "MiniMax Text 01"},
 		{ID: "MiniMax-M1", Name: "MiniMax M1"},
+		{ID: "MiniMax-M2.7", Name: "MiniMax M2.7"},
 		{ID: "MiniMax-M2.5", Name: "MiniMax M2.5"},
 		// Image generation
 		{ID: "image-01", Name: "Image 01"},
@@ -236,6 +239,18 @@ func sunoModels() []ModelInfo {
 		{ID: "v4.5", Name: "Suno V4.5"},
 		{ID: "v4", Name: "Suno V4"},
 		{ID: "v3.5", Name: "Suno V3.5"},
+	}
+}
+
+// anthropicOAuthModels returns hardcoded Anthropic models for the
+// anthropic_oauth provider. Setup tokens lack /v1/models permission,
+// so we return a static list instead of calling the API.
+func anthropicOAuthModels() []ModelInfo {
+	return []ModelInfo{
+		{ID: "claude-opus-4-6", Name: "Claude Opus 4.6"},
+		{ID: "claude-opus-4-5", Name: "Claude Opus 4.5"},
+		{ID: "claude-sonnet-4-6", Name: "Claude Sonnet 4.6"},
+		{ID: "claude-haiku-4-5-20251001", Name: "Claude Haiku 4.5"},
 	}
 }
 

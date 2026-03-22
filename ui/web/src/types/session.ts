@@ -32,6 +32,8 @@ export interface Message {
   thinking?: string;
   tool_calls?: ToolCall[];
   tool_call_id?: string;
+  is_error?: boolean;
+  media_refs?: { id: string; mime_type: string; kind: string }[];
 }
 
 export interface ToolCall {

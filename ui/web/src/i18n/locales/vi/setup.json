@@ -18,6 +18,7 @@
   "provider": {
     "title": "Cấu hình provider LLM",
     "descriptionCli": "Kết nối bằng Claude CLI cục bộ. Không cần API key.",
+    "descriptionOauth": "Đăng nhập bằng tài khoản ChatGPT để dùng gói thuê bao qua OAuth. Không cần API key.",
     "description": "Kết nối với provider AI để cấp nguồn cho agent. Bạn cần có API key.",
     "providerType": "Loại provider",
     "providerTypeHint": "Dịch vụ LLM bạn muốn kết nối. Khuyến nghị dùng OpenRouter để truy cập nhiều model.",
@@ -25,12 +26,15 @@
     "nameHint": "Định danh nội bộ cho provider này. Tự động tạo từ loại provider.",
     "apiKey": "API Key *",
     "apiKeyHint": "Khóa bí mật của provider. Được mã hóa phía máy chủ và không bao giờ lộ ra trong phản hồi API.",
+    "apiKeyHintOAuth": "Chạy 'claude setup-token' trong terminal để lấy OAuth token. Token OAuth bí mật của provider. Được mã hóa phía máy chủ và không bao giờ lộ ra trong phản hồi API.",
+    "setupToken": "Setup Token",
     "apiBase": "API Base URL",
     "apiBaseHint": "URL endpoint cho các yêu cầu API. Tự động điền theo loại provider. Chỉ ghi đè nếu dùng proxy tùy chỉnh.",
     "creating": "Đang tạo...",
     "create": "Tạo provider",
     "errors": {
       "apiKeyRequired": "API key là bắt buộc",
+      "oauthProviderNotFound": "Xác thực OAuth thành công nhưng không tìm thấy provider. Vui lòng thử lại.",
       "failedCreate": "Không thể tạo provider"
     }
   },

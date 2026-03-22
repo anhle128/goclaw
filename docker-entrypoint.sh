@@ -6,11 +6,20 @@ set -e
 # Docker named volumes initialize as root:root — fix ownership so goclaw
 # user can write to /app/data (requires CAP_DAC_OVERRIDE + CAP_CHOWN).
 RUNTIME_DIR="/app/data/.runtime"
-if [ "$(id -u)" = "0" ]; then
-  chown goclaw:goclaw /app/data /app/workspace 2>/dev/null || true
+# Non-fatal: on first start with a fresh volume the directory may not be
+# writable yet (volume initialisation race on some Docker runtimes).
+# The app starts fine without .runtime; package installs will fail gracefully.
+mkdir -p "$RUNTIME_DIR/pip" "$RUNTIME_DIR/npm-global/lib" "$RUNTIME_DIR/pip-cache" || true
+
+# Fix .runtime ownership for split root/goclaw access.
+# .runtime itself must be root-owned so pkg-helper (root) can write apk-packages.
+# Subdirs pip/, npm-global/, pip-cache/ must be goclaw-owned for runtime installs.
+# This also handles upgrades from older images where .runtime was fully goclaw-owned.
+if [ "$(id -u)" = "0" ] && [ -d "$RUNTIME_DIR" ]; then
+  chown root:goclaw "$RUNTIME_DIR" 2>/dev/null || true
+  chmod 0750 "$RUNTIME_DIR" 2>/dev/null || true
+  chown -R goclaw:goclaw "$RUNTIME_DIR/pip" "$RUNTIME_DIR/npm-global" "$RUNTIME_DIR/pip-cache" 2>/dev/null || true
 fi
-mkdir -p "$RUNTIME_DIR/pip" "$RUNTIME_DIR/npm-global/lib" "$RUNTIME_DIR/pip-cache"
-chown -R goclaw:goclaw "$RUNTIME_DIR" 2>/dev/null || true
 
 # Python: allow agent to pip install to writable target dir
 export PYTHONPATH="$RUNTIME_DIR/pip:${PYTHONPATH:-}"
@@ -25,11 +34,10 @@ export NODE_PATH="/usr/local/lib/node_modules:$RUNTIME_DIR/npm-global/lib/node_m
 export PATH="$RUNTIME_DIR/npm-global/bin:$RUNTIME_DIR/pip/bin:$PATH"
 
 # System packages: re-install on-demand packages persisted across recreates.
-# In Docker: entrypoint runs as root (then drops via su-exec).
-# Outside Docker: may run as non-root — skip privileged operations gracefully.
+# After chown above, root owns .runtime and can create this file.
 APK_LIST="$RUNTIME_DIR/apk-packages"
-touch "$APK_LIST" 2>/dev/null || true
 if [ "$(id -u)" = "0" ]; then
+  touch "$APK_LIST" 2>/dev/null || true
   chown root:goclaw "$APK_LIST" 2>/dev/null || true
   chmod 0640 "$APK_LIST" 2>/dev/null || true
 fi

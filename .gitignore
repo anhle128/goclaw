@@ -47,6 +47,14 @@ tests/**/creds.json
 ui/simple-saas
 *.tar
 
-**/.serena
+openspec
+
+.serena
+
+.github/prompts
+.github/skills
 
 repomix-output.xml
+# AI tool config directories (user-specific)
+.gemini/
+.opencode/

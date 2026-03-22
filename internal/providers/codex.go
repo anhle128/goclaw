@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"time"
 )
 
 // CodexProvider implements Provider for the OpenAI Responses API,
@@ -23,7 +22,7 @@ type CodexProvider struct {
 	tokenSource  TokenSource
 }
 
-// NewCodexProvider creates a provider for the OpenAI Responses API with OAuth token.
+// NewCodexProvider creates a provider for the OpenAI Responses API with OAuth Token.
 func NewCodexProvider(name string, tokenSource TokenSource, apiBase, defaultModel string) *CodexProvider {
 	if apiBase == "" {
 		apiBase = "https://chatgpt.com/backend-api"
@@ -31,14 +30,14 @@ func NewCodexProvider(name string, tokenSource TokenSource, apiBase, defaultMode
 	apiBase = strings.TrimRight(apiBase, "/")
 
 	if defaultModel == "" {
-		defaultModel = "gpt-5.3-codex"
+		defaultModel = "gpt-5.4"
 	}
 
 	return &CodexProvider{
 		name:         name,
 		apiBase:      apiBase,
 		defaultModel: defaultModel,
-		client:       &http.Client{Timeout: 300 * time.Second},
+		client:       &http.Client{Timeout: DefaultHTTPTimeout},
 		retryConfig:  DefaultRetryConfig(),
 		tokenSource:  tokenSource,
 	}
@@ -68,7 +67,7 @@ func (p *CodexProvider) ChatStream(ctx context.Context, req ChatRequest, onChunk
 	toolCalls := make(map[string]*codexToolCallAcc) // keyed by item_id
 
 	scanner := bufio.NewScanner(respBody)
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	scanner.Buffer(make([]byte, 0, SSEScanBufInit), SSEScanBufMax)
 	for scanner.Scan() {
 		line := scanner.Text()
 		if !strings.HasPrefix(line, "data:") {

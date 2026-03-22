@@ -3,6 +3,7 @@ package http
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"os/exec"
 	"path/filepath"
@@ -82,9 +83,10 @@ func (h *ProvidersHandler) handleVerifyProvider(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	provider, err := h.providerReg.Get(p.Name)
+	regName := registryNameForProvider(p)
+	provider, err := h.providerReg.Get(regName)
 	if err != nil {
-		writeJSON(w, http.StatusOK, map[string]any{"valid": false, "error": "provider not registered: " + p.Name})
+		writeJSON(w, http.StatusOK, map[string]any{"valid": false, "error": "provider not registered: " + regName})
 		return
 	}
 
@@ -104,14 +106,15 @@ func (h *ProvidersHandler) handleVerifyProvider(w http.ResponseWriter, r *http.R
 		},
 		Model: req.Model,
 		Options: map[string]any{
-			"max_tokens": 1,
+			// Use a small but safe value — reasoning models need headroom beyond 1 token.
+			"max_tokens": 50,
 		},
 	})
 	if err != nil {
+		slog.Warn("providers.verify", "provider", p.Name, "model", req.Model, "error", err.Error())
 		writeJSON(w, http.StatusOK, map[string]any{"valid": false, "error": friendlyVerifyError(err)})
 		return
 	}
-
 	writeJSON(w, http.StatusOK, map[string]any{"valid": true})
 }
 
@@ -175,18 +178,34 @@ func friendlyVerifyError(err error) string {
 
 	// Try to extract "message" field from embedded JSON
 	if idx := strings.Index(msg, `"message"`); idx >= 0 {
-		// Find the value after "message":
 		rest := msg[idx:]
-		// Look for :"<value>"
 		start := strings.Index(rest, `:`)
 		if start >= 0 {
 			rest = strings.TrimLeft(rest[start+1:], " ")
 			if len(rest) > 0 && rest[0] == '"' {
 				rest = rest[1:]
 				if before, _, ok := strings.Cut(rest, `"`); ok {
-					extracted := before
-					if extracted != "" {
-						return extracted
+					// Skip overly generic messages like "Error" — fall through to type extraction
+					if before != "" && !strings.EqualFold(before, "error") {
+						return before
+					}
+				}
+			}
+		}
+	}
+
+	// Try to extract "type" from nested error object (e.g. "authentication_error")
+	if idx := strings.Index(msg, `"error"`); idx >= 0 {
+		rest := msg[idx:]
+		if typeIdx := strings.Index(rest, `"type"`); typeIdx >= 0 {
+			typeRest := rest[typeIdx:]
+			if start := strings.Index(typeRest, `:`); start >= 0 {
+				typeRest = strings.TrimLeft(typeRest[start+1:], " ")
+				if len(typeRest) > 0 && typeRest[0] == '"' {
+					typeRest = typeRest[1:]
+					if before, _, ok := strings.Cut(typeRest, `"`); ok && before != "" && before != "error" {
+						// Convert snake_case to readable: "authentication_error" → "authentication error"
+						return strings.ReplaceAll(before, "_", " ")
 					}
 				}
 			}
@@ -196,7 +215,6 @@ func friendlyVerifyError(err error) string {
 	// Fallback: strip "HTTP NNN: provider: " prefix for cleaner display
 	if idx := strings.LastIndex(msg, ": "); idx >= 0 && idx < len(msg)-2 {
 		suffix := msg[idx+2:]
-		// If the remainder still looks like JSON, just say "invalid model"
 		if strings.HasPrefix(suffix, "{") {
 			return "Model not recognized by provider"
 		}

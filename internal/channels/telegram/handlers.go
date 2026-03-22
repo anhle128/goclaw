@@ -280,7 +280,8 @@ func (c *Channel) handleMessage(ctx context.Context, update telego.Update) {
 
 			// Collect contact even when bot is not mentioned (cache prevents DB spam).
 			if cc := c.ContactCollector(); cc != nil {
-				cc.EnsureContact(ctx, c.Type(), c.Name(), userID, userID, user.FirstName, user.Username, "group")
+				contactName := strings.TrimSpace(user.FirstName + " " + user.LastName)
+				cc.EnsureContact(ctx, c.Type(), c.Name(), userID, userID, contactName, user.Username, "group")
 			}
 
 			slog.Debug("telegram group message recorded (no mention)",
@@ -312,9 +313,9 @@ func (c *Channel) handleMessage(ctx context.Context, update telego.Update) {
 	// --- Media download (only when bot will process the message) ---
 	// Deferred until after mention + pairing gates to avoid downloading
 	// media for messages that only get recorded in pending history.
-	mediaList := c.resolveMedia(ctx, message)
+	mediaList, mediaErrors := c.resolveMedia(ctx, message)
 	if message.ReplyToMessage != nil && len(mediaList) == 0 {
-		replyMedia := c.resolveMedia(ctx, message.ReplyToMessage)
+		replyMedia, replyErrors := c.resolveMedia(ctx, message.ReplyToMessage)
 		if len(replyMedia) > 0 {
 			mediaList = append(mediaList, replyMedia...)
 			slog.Debug("telegram: resolved media from replied message",
@@ -322,6 +323,7 @@ func (c *Channel) handleMessage(ctx context.Context, update telego.Update) {
 				"media_count", len(replyMedia),
 			)
 		}
+		mediaErrors = append(mediaErrors, replyErrors...)
 	}
 
 	var mediaFiles []bus.MediaFile
@@ -372,6 +374,31 @@ func (c *Channel) handleMessage(ctx context.Context, update telego.Update) {
 		}
 		if extraContent != "" {
 			content += extraContent
+		}
+	}
+
+	// Annotate content + notify user for any media download failures.
+	// Replace the per-type lightweight tag with an error-annotated version so the
+	// model knows the specific media was skipped and why.
+	if len(mediaErrors) > 0 {
+		for _, me := range mediaErrors {
+			errTag := fmt.Sprintf("[sent media (%s) — skipped: %s]", me.Type, me.Reason)
+			if lightTag := lightweightTagForType(me.Type, message); lightTag != "" {
+				content = strings.Replace(content, lightTag, errTag, 1)
+			} else {
+				content = errTag + "\n" + content
+			}
+		}
+
+		// Send a short reply so the user knows their file was skipped.
+		for _, me := range mediaErrors {
+			var errText string
+			if me.MaxBytes > 0 {
+				errText = fmt.Sprintf("⚠️ File too large (max %d MB). Skipped.", me.MaxBytes/(1024*1024))
+			} else {
+				errText = "⚠️ Failed to download the attached file. Skipped."
+			}
+			_ = c.sendHTML(ctx, chatID, errText, 0, messageThreadID)
 		}
 	}
 
@@ -479,6 +506,11 @@ func (c *Channel) handleMessage(ctx context.Context, update telego.Update) {
 				break
 			}
 		}
+	}
+
+	// Collect contact for processed messages (DM + group-mentioned).
+	if cc := c.ContactCollector(); cc != nil {
+		cc.EnsureContact(ctx, c.Type(), c.Name(), senderID, userID, user.FirstName, user.Username, peerKind)
 	}
 
 	c.Bus().PublishInbound(bus.InboundMessage{
