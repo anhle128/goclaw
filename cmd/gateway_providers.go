@@ -301,6 +301,7 @@ func registerProvidersFromDB(registry *providers.Registry, provStore store.Provi
 			registry.Register(providers.NewCodexProvider(p.Name, ts, p.APIBase, ""))
 		case store.ProviderAnthropicNative, store.ProviderAnthropicOAuth:
 			registry.Register(providers.NewAnthropicProvider(p.APIKey,
+				providers.WithAnthropicName(p.Name),
 				providers.WithAnthropicBaseURL(p.APIBase)))
 			// Warn if setup token is nearing expiry
 			if p.ProviderType == store.ProviderAnthropicOAuth && len(p.Settings) > 0 {
