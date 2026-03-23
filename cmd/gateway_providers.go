@@ -299,7 +299,7 @@ func registerProvidersFromDB(registry *providers.Registry, provStore store.Provi
 		case store.ProviderChatGPTOAuth:
 			ts := oauth.NewDBTokenSource(provStore, secretStore, p.Name).WithTenantID(p.TenantID)
 			registry.RegisterForTenant(p.TenantID, providers.NewCodexProvider(p.Name, ts, p.APIBase, ""))
-		case store.ProviderAnthropicNative:
+		case store.ProviderAnthropicNative, store.ProviderAnthropicOAuth:
 			registry.RegisterForTenant(p.TenantID, providers.NewAnthropicProvider(p.APIKey,
 				providers.WithAnthropicName(p.Name),
 				providers.WithAnthropicBaseURL(p.APIBase)))
