@@ -233,7 +233,7 @@ func jsonToStringMap(data json.RawMessage) map[string]string {
 // mcpStore is optional; when provided, per-agent MCP servers are injected into CLI config.
 // cfg provides fallback api_base values from config/env when DB providers have none set.
 func registerProvidersFromDB(registry *providers.Registry, provStore store.ProviderStore, secretStore store.ConfigSecretsStore, gatewayAddr, gatewayToken string, mcpStore store.MCPServerStore, cfg *config.Config) {
-	ctx := context.Background()
+	ctx := store.WithCrossTenant(context.Background())
 	dbProviders, err := provStore.ListProviders(ctx)
 	if err != nil {
 		slog.Warn("failed to load providers from DB", "error", err)
@@ -265,7 +265,7 @@ func registerProvidersFromDB(registry *providers.Registry, provStore store.Provi
 				mcpData.AgentMCPLookup = buildMCPServerLookup(mcpStore)
 				cliOpts = append(cliOpts, providers.WithClaudeCLIMCPConfigData(mcpData))
 			}
-			registry.Register(providers.NewClaudeCLIProvider(cliPath, cliOpts...))
+			registry.RegisterForTenant(p.TenantID, providers.NewClaudeCLIProvider(cliPath, cliOpts...))
 			slog.Info("registered provider from DB", "name", p.Name)
 			continue
 		}
@@ -280,7 +280,7 @@ func registerProvidersFromDB(registry *providers.Registry, provStore store.Provi
 			if host == "" {
 				host = "http://localhost:11434"
 			}
-			registry.Register(providers.NewOpenAIProvider(p.Name, "ollama", host+"/v1", "llama3.3"))
+			registry.RegisterForTenant(p.TenantID, providers.NewOpenAIProvider(p.Name, "ollama", host+"/v1", "llama3.3"))
 			slog.Info("registered provider from DB", "name", p.Name)
 			continue
 		}
@@ -297,10 +297,10 @@ func registerProvidersFromDB(registry *providers.Registry, provStore store.Provi
 		}
 		switch p.ProviderType {
 		case store.ProviderChatGPTOAuth:
-			ts := oauth.NewDBTokenSource(provStore, secretStore, p.Name)
-			registry.Register(providers.NewCodexProvider(p.Name, ts, p.APIBase, ""))
-		case store.ProviderAnthropicNative, store.ProviderAnthropicOAuth:
-			registry.Register(providers.NewAnthropicProvider(p.APIKey,
+			ts := oauth.NewDBTokenSource(provStore, secretStore, p.Name).WithTenantID(p.TenantID)
+			registry.RegisterForTenant(p.TenantID, providers.NewCodexProvider(p.Name, ts, p.APIBase, ""))
+		case store.ProviderAnthropicNative:
+			registry.RegisterForTenant(p.TenantID, providers.NewAnthropicProvider(p.APIKey,
 				providers.WithAnthropicName(p.Name),
 				providers.WithAnthropicBaseURL(p.APIBase)))
 			// Warn if setup token is nearing expiry
@@ -315,31 +315,31 @@ func registerProvidersFromDB(registry *providers.Registry, provStore store.Provi
 				}
 			}
 		case store.ProviderDashScope:
-			registry.Register(providers.NewDashScopeProvider(p.Name, p.APIKey, p.APIBase, ""))
+			registry.RegisterForTenant(p.TenantID, providers.NewDashScopeProvider(p.Name, p.APIKey, p.APIBase, ""))
 		case store.ProviderBailian:
 			base := p.APIBase
 			if base == "" {
 				base = "https://coding-intl.dashscope.aliyuncs.com/v1"
 			}
-			registry.Register(providers.NewOpenAIProvider(p.Name, p.APIKey, base, "qwen3.5-plus"))
+			registry.RegisterForTenant(p.TenantID, providers.NewOpenAIProvider(p.Name, p.APIKey, base, "qwen3.5-plus"))
 		case store.ProviderZai:
 			base := p.APIBase
 			if base == "" {
 				base = "https://api.z.ai/api/paas/v4"
 			}
-			registry.Register(providers.NewOpenAIProvider(p.Name, p.APIKey, base, "glm-5"))
+			registry.RegisterForTenant(p.TenantID, providers.NewOpenAIProvider(p.Name, p.APIKey, base, "glm-5"))
 		case store.ProviderZaiCoding:
 			base := p.APIBase
 			if base == "" {
 				base = "https://api.z.ai/api/coding/paas/v4"
 			}
-			registry.Register(providers.NewOpenAIProvider(p.Name, p.APIKey, base, "glm-5"))
+			registry.RegisterForTenant(p.TenantID, providers.NewOpenAIProvider(p.Name, p.APIKey, base, "glm-5"))
 		case store.ProviderOllamaCloud:
 			base := p.APIBase
 			if base == "" {
 				base = "https://ollama.com/v1"
 			}
-			registry.Register(providers.NewOpenAIProvider(p.Name, p.APIKey, base, "llama3.3"))
+			registry.RegisterForTenant(p.TenantID, providers.NewOpenAIProvider(p.Name, p.APIKey, base, "llama3.3"))
 		case store.ProviderSuno:
 			// Suno is a media-only provider (music gen). Register as OpenAI-compat
 			// so credentialProvider interface works for API key/base extraction.
@@ -349,14 +349,14 @@ func registerProvidersFromDB(registry *providers.Registry, provStore store.Provi
 			}
 			prov := providers.NewOpenAIProvider(p.Name, p.APIKey, base, "")
 			prov.WithProviderType(p.ProviderType)
-			registry.Register(prov)
+			registry.RegisterForTenant(p.TenantID, prov)
 		default:
 			prov := providers.NewOpenAIProvider(p.Name, p.APIKey, p.APIBase, "")
 			prov.WithProviderType(p.ProviderType)
 			if p.ProviderType == store.ProviderMiniMax {
 				prov.WithChatPath("/text/chatcompletion_v2")
 			}
-			registry.Register(prov)
+			registry.RegisterForTenant(p.TenantID, prov)
 		}
 		slog.Info("registered provider from DB", "name", p.Name)
 	}
@@ -428,7 +428,7 @@ func registerACPFromDB(registry *providers.Registry, p store.LLMProviderData) {
 	if workDir == "" {
 		workDir = defaultACPWorkDir()
 	}
-	registry.Register(providers.NewACPProvider(
+	registry.RegisterForTenant(p.TenantID, providers.NewACPProvider(
 		binary, settings.Args, workDir, idleTTL, tools.DefaultDenyPatterns(),
 		providers.WithACPModel(p.Name),
 	))

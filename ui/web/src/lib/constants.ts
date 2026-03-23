@@ -26,7 +26,6 @@ export const ROUTES = {
   PROVIDER_DETAIL: "/providers/:id",
   TEAMS: "/teams",
   TEAM_DETAIL: "/teams/:id",
-  CUSTOM_TOOLS: "/custom-tools",
   BUILTIN_TOOLS: "/builtin-tools",
   CLI_CREDENTIALS: "/cli-credentials",
   MCP: "/mcp",
@@ -38,13 +37,18 @@ export const ROUTES = {
   ACTIVITY: "/activity",
   API_KEYS: "/api-keys",
   PACKAGES: "/packages",
+  TENANTS: "/admin/tenants",
+  TENANT_DETAIL: "/admin/tenants/:id",
   SETUP: "/setup",
+  SELECT_TENANT: "/select-tenant",
 } as const;
 
 export const LOCAL_STORAGE_KEYS = {
   TOKEN: "goclaw:token",
   USER_ID: "goclaw:userId",
   SENDER_ID: "goclaw:senderID",
+  TENANT_ID: "goclaw:tenant_id",
+  TENANT_HINT: "goclaw:tenant_hint",
   THEME: "goclaw:theme",
   SIDEBAR_COLLAPSED: "goclaw:sidebarCollapsed",
   LANGUAGE: "goclaw:language",
