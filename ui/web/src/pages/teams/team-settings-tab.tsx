@@ -224,7 +224,7 @@ export function TeamSettingsTab({ teamId, team, onSaved }: TeamSettingsTabProps)
       {/* Notifications */}
       <div className="space-y-4">
         <h3 className="text-sm font-medium">{t("settings.notifications")}</h3>
-        <div className="rounded-lg border bg-gradient-to-r from-blue-500/5 to-purple-500/5 p-4 space-y-3">
+        <div className="rounded-lg border bg-gradient-to-r from-blue-500/5 to-orange-500/5 p-4 space-y-3">
           <div className="flex items-start gap-4">
             <div className="rounded-lg bg-blue-500/10 p-2.5 text-blue-600 dark:text-blue-400">
               <Bell className="h-5 w-5" />

@@ -40,7 +40,7 @@ export function TeamVersionModal({ open, onOpenChange }: TeamVersionModalProps) 
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {t("settings.versionModal.title")}
-            <Badge className="bg-gradient-to-r from-violet-500 to-indigo-500 text-[10px] px-2 py-0.5 text-white border-0 font-semibold">
+            <Badge className="bg-gradient-to-r from-orange-500 to-amber-500 text-[10px] px-2 py-0.5 text-white border-0 font-semibold">
               Beta
             </Badge>
           </DialogTitle>
@@ -54,8 +54,8 @@ export function TeamVersionModal({ open, onOpenChange }: TeamVersionModalProps) 
             <p className="text-lg font-bold">V1</p>
             <p className="text-xs text-muted-foreground">{t("settings.versionBasicDesc")}</p>
           </div>
-          <div className="rounded-lg border border-violet-500/30 bg-gradient-to-br from-violet-500/5 to-indigo-500/5 p-3 text-center">
-            <p className="text-lg font-bold bg-gradient-to-r from-violet-600 to-indigo-600 bg-clip-text text-transparent">V2 Super Team</p>
+          <div className="rounded-lg border border-orange-500/30 bg-gradient-to-br from-orange-500/5 to-amber-500/5 p-3 text-center">
+            <p className="text-lg font-bold bg-gradient-to-r from-orange-600 to-amber-600 bg-clip-text text-transparent">V2 Super Team</p>
             <p className="text-xs text-muted-foreground">{t("settings.versionAdvancedDesc")}</p>
           </div>
         </div>

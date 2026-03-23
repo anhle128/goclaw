@@ -39,6 +39,13 @@ func handleSubagentAnnounce(
 		return false
 	}
 
+	// Inject tenant scope — same as processNormalMessage.
+	if msg.TenantID != uuid.Nil {
+		ctx = store.WithTenantID(ctx, msg.TenantID)
+	} else {
+		ctx = store.WithTenantID(ctx, store.MasterTenantID)
+	}
+
 	origChannel := msg.Metadata["origin_channel"]
 	origPeerKind := msg.Metadata["origin_peer_kind"]
 	origLocalKey := msg.Metadata["origin_local_key"]
@@ -188,6 +195,13 @@ func handleTeammateMessage(
 ) bool {
 	if !(msg.Channel == tools.ChannelSystem && strings.HasPrefix(msg.SenderID, "teammate:")) {
 		return false
+	}
+
+	// Inject tenant scope — same as processNormalMessage.
+	if msg.TenantID != uuid.Nil {
+		ctx = store.WithTenantID(ctx, msg.TenantID)
+	} else {
+		ctx = store.WithTenantID(ctx, store.MasterTenantID)
 	}
 
 	origChannel := msg.Metadata["origin_channel"]
@@ -346,24 +360,21 @@ func handleTeammateMessage(
 							if err := teamStore.FailTask(ctx, teamTaskID, teamID, outcome.Err.Error()); err != nil {
 								slog.Warn("auto-complete: FailTask error", "task_id", teamTaskID, "error", err)
 							} else {
-								msgBus.Broadcast(bus.Event{
-									Name: protocol.EventTeamTaskFailed,
-									Payload: protocol.TeamTaskEventPayload{
-										TeamID:     teamID.String(),
-										TaskID:     teamTaskID.String(),
-										TaskNumber: taskNumber,
-										Subject:    taskSubject,
-										Status:     store.TeamTaskStatusFailed,
-										Reason:     outcome.Err.Error(),
-										Channel:    taskChannel,
-										ChatID:     taskChatID,
-										Timestamp:  now,
-										ActorType:  "agent",
-										ActorID:    toAgent,
-									},
+								bus.BroadcastForTenant(msgBus, protocol.EventTeamTaskFailed, store.TenantIDFromContext(ctx), protocol.TeamTaskEventPayload{
+									TeamID:     teamID.String(),
+									TaskID:     teamTaskID.String(),
+									TaskNumber: taskNumber,
+									Subject:    taskSubject,
+									Status:     store.TeamTaskStatusFailed,
+									Reason:     outcome.Err.Error(),
+									Channel:    taskChannel,
+									ChatID:     taskChatID,
+									Timestamp:  now,
+									ActorType:  "agent",
+									ActorID:    toAgent,
 								})
 							}
-						} else {
+						} else if outcome.Result != nil {
 							result := outcome.Result.Content
 							if len(outcome.Result.Deliverables) > 0 {
 								result = strings.Join(outcome.Result.Deliverables, "\n\n---\n\n")
@@ -374,21 +385,18 @@ func handleTeammateMessage(
 							if err := teamStore.CompleteTask(ctx, teamTaskID, teamID, result); err != nil {
 								slog.Warn("auto-complete: CompleteTask error", "task_id", teamTaskID, "error", err)
 							} else {
-								msgBus.Broadcast(bus.Event{
-									Name: protocol.EventTeamTaskCompleted,
-									Payload: protocol.TeamTaskEventPayload{
-										TeamID:        teamID.String(),
-										TaskID:        teamTaskID.String(),
-										TaskNumber:    taskNumber,
-										Subject:       taskSubject,
-										Status:        store.TeamTaskStatusCompleted,
-										OwnerAgentKey: toAgent,
-										Channel:       taskChannel,
+								bus.BroadcastForTenant(msgBus, protocol.EventTeamTaskCompleted, store.TenantIDFromContext(ctx), protocol.TeamTaskEventPayload{
+									TeamID:        teamID.String(),
+									TaskID:        teamTaskID.String(),
+									TaskNumber:    taskNumber,
+									Subject:       taskSubject,
+									Status:        store.TeamTaskStatusCompleted,
+									OwnerAgentKey: toAgent,
+									Channel:       taskChannel,
 										ChatID:        taskChatID,
 										Timestamp:     now,
 										ActorType:     "agent",
 										ActorID:       toAgent,
-									},
 								})
 							}
 						}
@@ -413,6 +421,9 @@ func handleTeammateMessage(
 				errMsg = errMsg[:500] + "..."
 			}
 			announceContent = fmt.Sprintf("[FAILED] %s", errMsg)
+		} else if outcome.Result == nil {
+			slog.Warn("teammate message: nil result without error", "from", senderID)
+			return
 		} else if (outcome.Result.Content == "" && len(outcome.Result.Media) == 0) || agent.IsSilentReply(outcome.Result.Content) {
 			slog.Info("teammate message: suppressed silent/empty reply", "from", senderID)
 			return
@@ -560,8 +571,9 @@ func handleResetCommand(
 			sessionKey = sessions.BuildGroupTopicSessionKey(agentID, msg.Channel, msg.ChatID, topicID)
 		}
 	}
-	sessStore.Reset(sessionKey)
-	sessStore.Save(sessionKey)
+	ctx := store.WithTenantID(context.Background(), msg.TenantID)
+	sessStore.Reset(ctx, sessionKey)
+	sessStore.Save(ctx, sessionKey)
 	providers.ResetCLISession("", sessionKey)
 	slog.Info("inbound: /reset command", "session", sessionKey)
 

@@ -120,6 +120,7 @@ func autoSetFollowup(ctx context.Context, teamStore store.TeamStore, agentStore 
 	if agentStore == nil {
 		return
 	}
+	// Caller (processNormalMessage) already injected tenant_id into ctx.
 	// agentKey may be a slug ("default") or a UUID string (from WS clients).
 	var ag *store.AgentData
 	var err error

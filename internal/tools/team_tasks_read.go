@@ -188,6 +188,13 @@ func (t *TeamTasksTool) executeList(ctx context.Context, args map[string]any) *R
 		tasks = tasks[:listPageSize]
 	}
 
+	// Pre-warm agent cache to avoid N+1 queries for display names.
+	agentKeys := make([]string, 0, len(tasks)*2)
+	for _, task := range tasks {
+		agentKeys = append(agentKeys, task.OwnerAgentKey, task.CreatedByAgentKey)
+	}
+	t.manager.preWarmAgentKeyCache(ctx, agentKeys)
+
 	items := make([]taskListItem, 0, len(tasks))
 	for _, task := range tasks {
 		items = append(items, t.toListItem(ctx, task))
@@ -261,12 +268,24 @@ func (t *TeamTasksTool) executeGet(ctx context.Context, args map[string]any) *Re
 		}
 	}
 
+	// Pre-warm cache for task owner + creator display names.
+	t.manager.preWarmAgentKeyCache(ctx, []string{task.OwnerAgentKey, task.CreatedByAgentKey})
+
 	detail := t.toDetailItem(ctx, task)
 
 	// Load and slim comments/events/attachments
 	resp := map[string]any{"task": detail}
 
 	if comments, _ := t.manager.teamStore.ListTaskComments(ctx, taskID); len(comments) > 0 {
+		// Pre-warm agent cache to avoid N+1 queries for comment agent keys.
+		commentAgentIDs := make([]uuid.UUID, 0, len(comments))
+		for _, c := range comments {
+			if c.AgentID != nil {
+				commentAgentIDs = append(commentAgentIDs, *c.AgentID)
+			}
+		}
+		t.manager.preWarmAgentIDCache(ctx, commentAgentIDs)
+
 		slim := make([]slimComment, 0, len(comments))
 		for _, c := range comments {
 			key := ""

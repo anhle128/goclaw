@@ -135,7 +135,7 @@ func (h *ProvidersHandler) registerInMemory(p *store.LLMProviderData) {
 			mcpData.AgentMCPLookup = h.mcpLookup
 			cliOpts = append(cliOpts, providers.WithClaudeCLIMCPConfigData(mcpData))
 		}
-		h.providerReg.Register(providers.NewClaudeCLIProvider(cliPath, cliOpts...))
+		h.providerReg.RegisterForTenant(p.TenantID, providers.NewClaudeCLIProvider(cliPath, cliOpts...))
 		return
 	}
 	if p.APIKey == "" {
@@ -144,26 +144,26 @@ func (h *ProvidersHandler) registerInMemory(p *store.LLMProviderData) {
 	apiBase := h.resolveAPIBase(p)
 	switch p.ProviderType {
 	case store.ProviderChatGPTOAuth:
-		ts := oauth.NewDBTokenSource(h.store, h.secretStore, p.Name)
-		h.providerReg.Register(providers.NewCodexProvider(p.Name, ts, apiBase, ""))
+		ts := oauth.NewDBTokenSource(h.store, h.secretStore, p.Name).WithTenantID(p.TenantID)
+		h.providerReg.RegisterForTenant(p.TenantID, providers.NewCodexProvider(p.Name, ts, apiBase, ""))
 	case store.ProviderAnthropicNative, store.ProviderAnthropicOAuth:
-		h.providerReg.Register(providers.NewAnthropicProvider(p.APIKey,
+		h.providerReg.RegisterForTenant(p.TenantID, providers.NewAnthropicProvider(p.APIKey,
 			providers.WithAnthropicName(p.Name),
 			providers.WithAnthropicBaseURL(apiBase)))
 	case store.ProviderDashScope:
-		h.providerReg.Register(providers.NewDashScopeProvider(p.Name, p.APIKey, apiBase, ""))
+		h.providerReg.RegisterForTenant(p.TenantID, providers.NewDashScopeProvider(p.Name, p.APIKey, apiBase, ""))
 	case store.ProviderBailian:
 		base := apiBase
 		if base == "" {
 			base = "https://coding-intl.dashscope.aliyuncs.com/v1"
 		}
-		h.providerReg.Register(providers.NewOpenAIProvider(p.Name, p.APIKey, base, "qwen3.5-plus"))
+		h.providerReg.RegisterForTenant(p.TenantID, providers.NewOpenAIProvider(p.Name, p.APIKey, base, "qwen3.5-plus"))
 	default:
 		prov := providers.NewOpenAIProvider(p.Name, p.APIKey, apiBase, "")
 		if p.ProviderType == store.ProviderMiniMax {
 			prov.WithChatPath("/text/chatcompletion_v2")
 		}
-		h.providerReg.Register(prov)
+		h.providerReg.RegisterForTenant(p.TenantID, prov)
 	}
 }
 
@@ -318,10 +318,10 @@ func (h *ProvidersHandler) handleUpdateProvider(w http.ResponseWriter, r *http.R
 		if updated, err := h.store.GetProvider(r.Context(), id); err == nil {
 			// Unregister old name if renamed to prevent ghost entries
 			if oldName != "" && oldName != updated.Name {
-				h.providerReg.Unregister(oldName)
+				h.providerReg.UnregisterForTenant(updated.TenantID, oldName)
 			}
 			if !updated.Enabled {
-				h.providerReg.Unregister(updated.Name)
+				h.providerReg.UnregisterForTenant(updated.TenantID, updated.Name)
 			} else {
 				h.registerInMemory(updated)
 			}
@@ -348,10 +348,12 @@ func (h *ProvidersHandler) handleDeleteProvider(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	// Read provider name before deleting so we can unregister it
+	// Read provider before deleting so we can unregister it
 	var providerName string
+	var providerTenantID uuid.UUID
 	if p, err := h.store.GetProvider(r.Context(), id); err == nil {
 		providerName = p.Name
+		providerTenantID = p.TenantID
 	}
 
 	if err := h.store.DeleteProvider(r.Context(), id); err != nil {
@@ -361,7 +363,7 @@ func (h *ProvidersHandler) handleDeleteProvider(w http.ResponseWriter, r *http.R
 	}
 
 	if h.providerReg != nil && providerName != "" {
-		h.providerReg.Unregister(providerName)
+		h.providerReg.UnregisterForTenant(providerTenantID, providerName)
 	}
 	if providerName != "" {
 		h.emitProviderCacheInvalidate(providerName)

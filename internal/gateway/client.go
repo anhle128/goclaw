@@ -34,6 +34,14 @@ type Client struct {
 	pairingPending  bool   // true while waiting for admin approval
 	pairedSenderID  string // senderID used for browser pairing auth (for revocation lookup)
 	pairedChannel   string // channel used for pairing auth (e.g., "browser")
+
+	// Team access cache for event filtering (lazily populated).
+	teamIDs map[string]bool
+
+	tenantID    uuid.UUID // resolved tenant (uuid.Nil = cross-tenant)
+	crossTenant bool      // true for owner/system admin
+	tenantName  string    // resolved tenant display name (set during connect)
+	tenantSlug  string    // resolved tenant URL slug (set during connect)
 }
 
 func NewClient(conn *websocket.Conn, server *Server, remoteIP string) *Client {
@@ -191,6 +199,43 @@ func (c *Client) ConnectedAt() time.Time { return c.connectedAt }
 
 // RemoteAddr returns the peer IP:port.
 func (c *Client) RemoteAddr() string { return c.remoteAddr }
+
+// TenantID returns the resolved tenant UUID (uuid.Nil means cross-tenant).
+func (c *Client) TenantID() uuid.UUID { return c.tenantID }
+
+// IsCrossTenant returns true if the client has cross-tenant (owner/system admin) access.
+func (c *Client) IsCrossTenant() bool { return c.crossTenant }
+
+// HasScope reports whether the client has the given scope.
+func (c *Client) HasScope(scope permissions.Scope) bool {
+	for _, s := range c.scopes {
+		if s == scope {
+			return true
+		}
+	}
+	return false
+}
+
+// hasTeamAccess checks if the client has access to a team (for event filtering).
+// Returns true for admin role. For others, checks the lazily-populated teamIDs cache.
+// TODO: populate teamIDs from team_user_grants on connect or first team event.
+func (c *Client) hasTeamAccess(teamID string) bool {
+	if permissions.HasMinRole(c.role, permissions.RoleAdmin) {
+		return true
+	}
+	if c.teamIDs == nil {
+		return false
+	}
+	return c.teamIDs[teamID]
+}
+
+// SetTeamAccess sets the team access cache for this client.
+func (c *Client) SetTeamAccess(teamIDs []string) {
+	c.teamIDs = make(map[string]bool, len(teamIDs))
+	for _, id := range teamIDs {
+		c.teamIDs[id] = true
+	}
+}
 
 // Close shuts down the client connection.
 func (c *Client) Close() {

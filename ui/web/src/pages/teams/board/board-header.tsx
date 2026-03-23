@@ -38,7 +38,7 @@ export function BoardHeader({ team, members, onBack, onDelete, onSettings, onMem
           </Badge>
           {isV2 && (
             <Badge
-              className="bg-gradient-to-r from-violet-500 to-indigo-500 text-[10px] px-2 py-0.5 text-white border-0 font-semibold shadow-sm cursor-pointer hover:opacity-80 transition-opacity"
+              className="bg-gradient-to-r from-orange-500 to-amber-500 text-[10px] px-2 py-0.5 text-white border-0 font-semibold shadow-sm cursor-pointer hover:opacity-80 transition-opacity"
               onClick={onV2Click}
             >
               v2 Super Team (Beta)
