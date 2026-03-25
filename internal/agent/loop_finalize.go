@@ -48,8 +48,9 @@ func (l *Loop) finalizeRun(
 	}
 
 	// Append content suffix (e.g. image markdown for WS) before saving to session.
-	if req.ContentSuffix != "" && !strings.Contains(rs.finalContent, req.ContentSuffix) {
-		rs.finalContent += req.ContentSuffix
+	// Dedup by basename: skip suffix lines whose file already appears in the agent's text.
+	if req.ContentSuffix != "" {
+		rs.finalContent += deduplicateMediaSuffix(rs.finalContent, req.ContentSuffix)
 	}
 
 	// Collect forwarded media + dedup + populate sizes BEFORE saving to session,

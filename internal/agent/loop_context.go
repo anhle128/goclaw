@@ -97,17 +97,16 @@ func (l *Loop) injectContext(ctx context.Context, req *RunRequest) (contextSetup
 		ctx = tools.WithTeamTaskID(ctx, req.TeamTaskID)
 	}
 
-	// Per-user workspace isolation.
-	// Workspace path comes from user_agent_profiles (includes channel segment
-	// for cross-channel isolation). Cached in userWorkspaces to avoid repeated DB queries.
+	// --- Workspace resolution (layered pipeline) ---
+	// Layer order: tenant → team → project (future) → user/chat
+	// Two entry modes: solo agent (base = l.workspace) or team context (base = l.dataDir).
+	// Result is always a single folder set via WithToolWorkspace.
+
+	// Solo agent workspace: resolve base from user profile or agent config.
 	isTeamSession := bootstrap.IsTeamSession(req.SessionKey)
 	if l.workspace != "" && req.UserID != "" {
 		cachedWs, loaded := l.userWorkspaces.Load(req.UserID)
 		if !loaded {
-			// First request for this user: get/create profile → returns stored workspace.
-			// Also seeds per-user context files on first chat.
-			// Team-dispatched sessions skip seeding — members process tasks with full
-			// capabilities, no bootstrap/user onboarding needed.
 			ws := l.workspace
 			if l.ensureUserFiles != nil && !isTeamSession {
 				var err error
@@ -117,7 +116,6 @@ func (l *Loop) injectContext(ctx context.Context, req *RunRequest) (contextSetup
 					ws = l.workspace
 				}
 			}
-			// Expand ~ and convert to absolute for filesystem operations.
 			ws = config.ExpandHome(ws)
 			if !filepath.IsAbs(ws) {
 				ws, _ = filepath.Abs(ws)
@@ -125,10 +123,11 @@ func (l *Loop) injectContext(ctx context.Context, req *RunRequest) (contextSetup
 			l.userWorkspaces.Store(req.UserID, ws)
 			cachedWs = ws
 		}
-		effectiveWorkspace := cachedWs.(string)
-		if !l.shouldShareWorkspace(req.UserID, req.PeerKind) {
-			effectiveWorkspace = filepath.Join(effectiveWorkspace, sanitizePathSegment(req.UserID))
-		}
+		// Apply user isolation layer via pipeline.
+		shared := l.shouldShareWorkspace(req.UserID, req.PeerKind)
+		effectiveWorkspace := tools.ResolveWorkspace(cachedWs.(string),
+			tools.UserChatLayer(tools.SanitizePathSegment(req.UserID), shared),
+		)
 		if l.shouldShareMemory() {
 			ctx = store.WithSharedMemory(ctx)
 		}
@@ -143,46 +142,41 @@ func (l *Loop) injectContext(ctx context.Context, req *RunRequest) (contextSetup
 		ctx = tools.WithToolWorkspace(ctx, l.workspace)
 	}
 
-	// Team workspace handling:
-	// - Dispatched task (req.TeamWorkspace set): override default workspace so
-	//   relative paths resolve to team workspace. Agent workspace is accessible
-	//   via ToolTeamWorkspace for absolute-path access.
-	// - Direct chat (auto-resolved): keep agent workspace as default, team
-	//   workspace accessible via absolute path.
+	// Team workspace: dispatched task overrides default workspace.
 	if req.TeamWorkspace != "" {
 		if err := os.MkdirAll(req.TeamWorkspace, 0755); err != nil {
 			slog.Warn("failed to create team workspace directory", "workspace", req.TeamWorkspace, "error", err)
 		}
 		ctx = tools.WithToolTeamWorkspace(ctx, req.TeamWorkspace)
-		ctx = tools.WithToolWorkspace(ctx, req.TeamWorkspace) // default for relative paths
+		ctx = tools.WithToolWorkspace(ctx, req.TeamWorkspace)
 	}
 	if req.TeamID != "" {
 		ctx = tools.WithToolTeamID(ctx, req.TeamID)
 	}
 
-	// Auto-resolve team workspace for agents not dispatched via team task.
-	// Lead agents default to team workspace (primary job is team coordination).
-	// Non-lead members keep own workspace; team workspace is accessible via absolute path.
-	// resolvedTeamSettings caches team settings from workspace resolution
-	// to avoid re-querying when checking slow_tool notification config.
+	// Team workspace: auto-resolve for agents with team membership (not dispatched).
+	// Lead agents default to team workspace; non-lead members keep own workspace.
 	var resolvedTeamSettings json.RawMessage
 	if req.TeamWorkspace == "" && l.teamStore != nil && l.agentUUID != uuid.Nil {
 		if team, _ := l.teamStore.GetTeamForAgent(ctx, l.agentUUID); team != nil {
 			resolvedTeamSettings = team.Settings
-			// Shared workspace: scope by teamID only. Isolated (default): scope by chatID too.
 			wsChat := req.ChatID
 			if wsChat == "" {
 				wsChat = req.UserID
 			}
-			if tools.IsSharedWorkspace(team.Settings) {
-				wsChat = ""
+			shared := tools.IsSharedWorkspace(team.Settings)
+			// Resolve team workspace via layered pipeline: tenant → team → user/chat.
+			wsDir := tools.ResolveWorkspace(l.dataDir,
+				tools.TenantLayer(store.TenantIDFromContext(ctx), store.TenantSlugFromContext(ctx)),
+				tools.TeamLayer(team.ID),
+				tools.UserChatLayer(wsChat, shared),
+			)
+			if err := os.MkdirAll(wsDir, 0750); err != nil {
+				slog.Warn("failed to create team workspace directory", "workspace", wsDir, "error", err)
 			}
-			tenantBase := config.TenantWorkspace(l.dataDir, store.TenantIDFromContext(ctx), store.TenantSlugFromContext(ctx))
-			if wsDir, err := tools.WorkspaceDir(tenantBase, team.ID, wsChat); err == nil {
-				ctx = tools.WithToolTeamWorkspace(ctx, wsDir)
-				if team.LeadAgentID == l.agentUUID {
-					ctx = tools.WithToolWorkspace(ctx, wsDir)
-				}
+			ctx = tools.WithToolTeamWorkspace(ctx, wsDir)
+			if team.LeadAgentID == l.agentUUID {
+				ctx = tools.WithToolWorkspace(ctx, wsDir)
 			}
 			if req.TeamID == "" {
 				ctx = tools.WithToolTeamID(ctx, team.ID.String())

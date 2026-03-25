@@ -179,13 +179,18 @@ func wireExtras(
 				}
 				// Convert media local paths → signed /v1/files/basename?ft=hash
 				if rawMedia, ok := m["media"].([]agent.MediaResult); ok {
-					for i := range rawMedia {
-						basename := filepath.Base(rawMedia[i].Path)
+					// Clone slice — the original is shared with RunResult.Media;
+					// mutating in-place corrupts paths for downstream consumers
+					// (announce queue, outbound channels) that expect local paths.
+					signed := make([]agent.MediaResult, len(rawMedia))
+					for i, mr := range rawMedia {
+						signed[i] = mr
+						basename := filepath.Base(mr.Path)
 						url := "/v1/files/" + basename
 						ft := httpapi.SignFileToken(url, secret, httpapi.FileTokenTTL)
-						rawMedia[i].Path = url + "?ft=" + ft
+						signed[i].Path = url + "?ft=" + ft
 					}
-					m["media"] = rawMedia
+					m["media"] = signed
 				}
 			}
 			msgBus.Broadcast(bus.Event{
