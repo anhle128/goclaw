@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -140,11 +141,15 @@ func (h *ProvidersHandler) handleClaudeCLIAuthStatus(w http.ResponseWriter, r *h
 		}
 	}
 
+	_, dockerErr := os.Stat("/.dockerenv")
+	inDocker := dockerErr == nil
+
 	status, err := providers.CheckClaudeAuthStatus(ctx, cliPath)
 	if err != nil {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"logged_in": false,
 			"error":     err.Error(),
+			"in_docker": inDocker,
 		})
 		return
 	}
@@ -153,6 +158,7 @@ func (h *ProvidersHandler) handleClaudeCLIAuthStatus(w http.ResponseWriter, r *h
 		"logged_in":         status.LoggedIn,
 		"email":             status.Email,
 		"subscription_type": status.SubscriptionType,
+		"in_docker":         inDocker,
 	})
 }
 
