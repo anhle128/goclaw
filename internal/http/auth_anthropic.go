@@ -40,7 +40,7 @@ func (h *AnthropicAuthHandler) RegisterRoutes(mux *http.ServeMux) {
 }
 
 func (h *AnthropicAuthHandler) auth(next http.HandlerFunc) http.HandlerFunc {
-	return requireAuth(h.token, "", next)
+	return requireAuth("", next)
 }
 
 // handleToken accepts and stores an Anthropic setup token.
