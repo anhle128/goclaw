@@ -6,13 +6,13 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/nextlevelbuilder/goclaw/internal/config"
 	"github.com/nextlevelbuilder/goclaw/internal/i18n"
 	"github.com/nextlevelbuilder/goclaw/internal/providers"
 	"github.com/nextlevelbuilder/goclaw/internal/store"
@@ -141,8 +141,7 @@ func (h *ProvidersHandler) handleClaudeCLIAuthStatus(w http.ResponseWriter, r *h
 		}
 	}
 
-	_, dockerErr := os.Stat("/.dockerenv")
-	inDocker := dockerErr == nil
+	inDocker := config.InDocker()
 
 	status, err := providers.CheckClaudeAuthStatus(ctx, cliPath)
 	if err != nil {

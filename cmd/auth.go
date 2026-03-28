@@ -5,17 +5,19 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 
+	"github.com/nextlevelbuilder/goclaw/internal/oauth"
 	"github.com/spf13/cobra"
 )
 
 func authCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "auth",
-		Short: "Authenticate with LLM providers via OAuth",
-		Long:  "Manage OAuth authentication via the running gateway. Requires the gateway to be running.",
+		Short: "Authenticate named ChatGPT OAuth accounts",
+		Long:  "Manage ChatGPT OAuth authentication via the running gateway. Requires the gateway to be running.",
 	}
 	cmd.AddCommand(authStatusCmd())
 	cmd.AddCommand(authLogoutCmd())
@@ -75,37 +77,27 @@ func gatewayRequest(method, path string) (map[string]any, error) {
 
 func authStatusCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "status",
-		Short: "Show authentication status for all providers",
-		Long:  "Check OAuth/token authentication status for OpenAI and Anthropic.",
+		Use:   "status [provider]",
+		Short: "Show OAuth authentication status",
+		Long:  "Check if a named ChatGPT OAuth account is authenticated on the running gateway.",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// OpenAI status
-			result, err := gatewayRequest("GET", "/v1/auth/openai/status")
-			if err == nil {
-				if auth, _ := result["authenticated"].(bool); auth {
-					name, _ := result["provider_name"].(string)
-					fmt.Printf("OpenAI OAuth: active (provider: %s)\n", name)
-				} else {
-					fmt.Println("OpenAI OAuth: not configured")
-				}
+			provider := resolveOAuthProviderArg(args)
+			result, err := gatewayRequest("GET", fmt.Sprintf("/v1/auth/chatgpt/%s/status", url.PathEscape(provider)))
+			if err != nil {
+				return err
 			}
 
-			// Anthropic status
-			result, err = gatewayRequest("GET", "/v1/auth/anthropic/status")
-			if err == nil {
-				if auth, _ := result["authenticated"].(bool); auth {
-					tokenType, _ := result["token_type"].(string)
-					expiresAt, _ := result["expires_at"].(string)
-					if tokenType == "setup_token" && expiresAt != "" {
-						fmt.Printf("Anthropic: active (setup token, expires %s)\n", expiresAt)
-					} else if tokenType == "api_key" {
-						fmt.Println("Anthropic: active (API key)")
-					} else {
-						fmt.Println("Anthropic: active")
-					}
-				} else {
-					fmt.Println("Anthropic: not configured")
+			if auth, _ := result["authenticated"].(bool); auth {
+				name, _ := result["provider_name"].(string)
+				if name == "" {
+					name = provider
 				}
+				fmt.Printf("ChatGPT OAuth account: active (alias: %s)\n", name)
+				fmt.Printf("Use model prefix '%s/' in agent config (e.g. %s/gpt-5.4).\n", name, name)
+			} else {
+				fmt.Printf("No ChatGPT OAuth tokens found for alias '%s'.\n", provider)
+				fmt.Println("Use the web UI to authenticate this ChatGPT OAuth account.")
 			}
 
 			return nil
@@ -116,31 +108,28 @@ func authStatusCmd() *cobra.Command {
 func authLogoutCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "logout [provider]",
-		Short: "Remove stored OAuth Tokens",
+		Short: "Disconnect stored ChatGPT OAuth tokens",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			provider := "openai"
-			if len(args) > 0 {
-				provider = args[0]
+			provider := resolveOAuthProviderArg(args)
+			_, err := gatewayRequest("POST", fmt.Sprintf("/v1/auth/chatgpt/%s/logout", url.PathEscape(provider)))
+			if err != nil {
+				return err
 			}
 
-			switch provider {
-			case "openai":
-				_, err := gatewayRequest("POST", "/v1/auth/openai/logout")
-				if err != nil {
-					return err
-				}
-				fmt.Println("OpenAI OAuth Token removed.")
-			case "anthropic":
-				_, err := gatewayRequest("POST", "/v1/auth/anthropic/logout")
-				if err != nil {
-					return err
-				}
-				fmt.Println("Anthropic credentials removed.")
-			default:
-				return fmt.Errorf("unknown provider: %s (supported: openai, anthropic)", provider)
-			}
+			fmt.Printf("ChatGPT OAuth account disconnected for alias '%s'.\n", provider)
 			return nil
 		},
 	}
+}
+
+func resolveOAuthProviderArg(args []string) string {
+	if len(args) == 0 {
+		return oauth.DefaultProviderName
+	}
+	provider := strings.TrimSpace(args[0])
+	if provider == "" || provider == "openai" {
+		return oauth.DefaultProviderName
+	}
+	return provider
 }
