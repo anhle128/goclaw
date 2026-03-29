@@ -59,6 +59,9 @@ func (t *SessionsListTool) Execute(ctx context.Context, args map[string]any) *Re
 	}
 
 	agentID := resolveAgentIDString(ctx)
+	if agentID == "" {
+		return ErrorResult("agent context required")
+	}
 	sessions := t.sessions.List(ctx, agentID)
 
 	// Filter by active_minutes
@@ -142,13 +145,19 @@ func (t *SessionStatusTool) Execute(ctx context.Context, args map[string]any) *R
 		return ErrorResult("session_key is required (could not detect current session)")
 	}
 
-	// Security: validate session belongs to current agent
+	// Security: validate session belongs to current agent (fail-closed)
 	agentID := resolveAgentIDString(ctx)
-	if agentID != "" && !strings.HasPrefix(sessionKey, "agent:"+agentID+":") {
+	if agentID == "" {
+		return ErrorResult("agent context required")
+	}
+	if !strings.HasPrefix(sessionKey, "agent:"+agentID+":") {
 		return ErrorResult("access denied: session belongs to a different agent")
 	}
 
-	data := t.sessions.GetOrCreate(ctx, sessionKey)
+	data := t.sessions.Get(ctx, sessionKey)
+	if data == nil {
+		return ErrorResult("session not found")
+	}
 
 	var lines []string
 	lines = append(lines, fmt.Sprintf("Session: %s", data.Key))

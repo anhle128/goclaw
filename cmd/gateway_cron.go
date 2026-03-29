@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"strings"
 
+	"github.com/google/uuid"
+
 	"github.com/nextlevelbuilder/goclaw/internal/agent"
 	"github.com/nextlevelbuilder/goclaw/internal/bus"
 	"github.com/nextlevelbuilder/goclaw/internal/channels"
@@ -22,11 +24,18 @@ import (
 // Safe because cron jobs only fire after Start(), well after this is set.
 var cronHeartbeatWakeFn func(agentID string)
 
-func makeCronJobHandler(sched *scheduler.Scheduler, msgBus *bus.MessageBus, cfg *config.Config, channelMgr *channels.Manager, sessionMgr store.SessionStore) func(job *store.CronJob) (*store.CronJobResult, error) {
+func makeCronJobHandler(sched *scheduler.Scheduler, msgBus *bus.MessageBus, cfg *config.Config, channelMgr *channels.Manager, sessionMgr store.SessionStore, agentStore store.AgentStore) func(job *store.CronJob) (*store.CronJobResult, error) {
 	return func(job *store.CronJob) (*store.CronJobResult, error) {
 		agentID := job.AgentID
 		if agentID == "" {
 			agentID = cfg.ResolveDefaultAgentID()
+		} else if id, err := uuid.Parse(agentID); err == nil && agentStore != nil {
+			// Resolve agentKey from UUID so session key uses agentKey
+			// (consistent with chat/WS/team paths, fixes cache invalidation mismatch).
+			cronCtx := store.WithTenantID(context.Background(), job.TenantID)
+			if ag, err := agentStore.GetByID(cronCtx, id); err == nil {
+				agentID = ag.AgentKey
+			}
 		} else {
 			agentID = config.NormalizeAgentID(agentID)
 		}
@@ -119,9 +128,10 @@ func makeCronJobHandler(sched *scheduler.Scheduler, msgBus *bus.MessageBus, cfg 
 			cronResult.OutputTokens = result.Usage.CompletionTokens
 		}
 
-		// wakeMode: trigger heartbeat after cron job completes
+		// wakeMode: trigger heartbeat after cron job completes.
+		// Use original job.AgentID (UUID) — cronHeartbeatWakeFn expects UUID for ticker.Wake().
 		if job.Payload.WakeHeartbeat && cronHeartbeatWakeFn != nil {
-			cronHeartbeatWakeFn(agentID)
+			cronHeartbeatWakeFn(job.AgentID)
 		}
 
 		return cronResult, nil

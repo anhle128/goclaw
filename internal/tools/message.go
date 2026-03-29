@@ -95,6 +95,15 @@ func (t *MessageTool) Execute(ctx context.Context, args map[string]any) *Result 
 		return ErrorResult("target chat ID is required (no current chat in context)")
 	}
 
+	// Block self-send: agent should not use message tool to send to its own
+	// channel/chat — the response is already dispatched via normal outbound flow.
+	// This prevents duplicate media delivery when announce flow already carries media.
+	ctxChannel := ToolChannelFromCtx(ctx)
+	ctxChatID := ToolChatIDFromCtx(ctx)
+	if ctxChannel != "" && ctxChatID != "" && channel == ctxChannel && target == ctxChatID {
+		return ErrorResult("You are already responding to this chat. Your response (including any MEDIA: references) will be delivered automatically. Do not use the message tool to send to your own chat — just include the content in your response text.")
+	}
+
 	// Tenant isolation: validate channel belongs to current tenant.
 	if err := t.validateChannelTenant(ctx, channel, target); err != nil {
 		return err

@@ -242,8 +242,12 @@ func (m *ChatMethods) handleSend(ctx context.Context, client *gateway.Client, re
 		})
 
 		if err != nil {
-			// Don't send error if context was cancelled (abort)
+			// Send cancelled response so the frontend's chat.send promise resolves
+			// instead of hanging until the 600s timeout.
 			if runCtx.Err() != nil {
+				client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{
+					"cancelled": true,
+				}))
 				return
 			}
 			client.SendResponse(protocol.NewErrorResponse(req.ID, protocol.ErrInternal, err.Error()))
@@ -310,8 +314,12 @@ func (m *ChatMethods) handleHistory(ctx context.Context, client *gateway.Client,
 	history := m.sessions.GetHistory(ctx, sessionKey)
 
 	// Sign file URLs before delivery — sessions store clean paths.
+	secret := httpapi.FileSigningKey()
 	for i := range history {
-		history[i].Content = httpapi.SignFileURLs(history[i].Content, httpapi.FileSigningKey())
+		history[i].Content = httpapi.SignFileURLs(history[i].Content, secret)
+		for j := range history[i].MediaRefs {
+			history[i].MediaRefs[j].Path = httpapi.SignMediaPath(history[i].MediaRefs[j].Path, secret)
+		}
 	}
 
 	client.SendResponse(protocol.NewOKResponse(req.ID, map[string]any{

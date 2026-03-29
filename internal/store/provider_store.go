@@ -31,7 +31,13 @@ const (
 	ProviderOllama          = "ollama"       // local or self-hosted Ollama (no API key)
 	ProviderOllamaCloud     = "ollama_cloud"    // Ollama Cloud (Bearer token required)
 	ProviderACP             = "acp"             // ACP (Agent Client Protocol) agent subprocess
+	ProviderNovita          = "novita"       // Novita AI (OpenAI-compatible endpoint)
 	ProviderAnthropicOAuth  = "anthropic_oauth" // Anthropic OAuth setup token (sk-ant-oat01-)
+
+
+	// Novita AI defaults.
+	NovitaDefaultAPIBase = "https://api.novita.ai/openai"
+	NovitaDefaultModel   = "moonshotai/kimi-k2.5"
 )
 
 // ValidProviderTypes lists all accepted provider_type values.
@@ -58,7 +64,11 @@ var ValidProviderTypes = map[string]bool{
 	ProviderOllama:          true,
 	ProviderOllamaCloud:     true,
 	ProviderACP:             true,
+<<<<<<< HEAD
 	ProviderAnthropicOAuth:  true,
+=======
+	ProviderNovita:          true,
+>>>>>>> upstream/main
 }
 
 // LLMProviderData represents an LLM provider configuration.

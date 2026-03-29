@@ -1,4 +1,4 @@
-VERSION ?= $(shell git describe --tags --abbrev=0 2>/dev/null || echo dev)
+VERSION ?= $(shell git describe --tags --abbrev=0 --match "v[0-9]*" 2>/dev/null || echo dev)
 LDFLAGS  = -s -w -X github.com/nextlevelbuilder/goclaw/cmd.Version=$(VERSION)
 BINARY   = goclaw
 
@@ -32,6 +32,9 @@ COMPOSE_EXTRA += -f docker-compose.tailscale.yml
 endif
 ifdef WITH_REDIS
 COMPOSE_EXTRA += -f docker-compose.redis.yml
+endif
+ifdef WITH_CLAUDE_CLI
+COMPOSE_EXTRA += -f docker-compose.claude-cli.yml
 endif
 COMPOSE = $(COMPOSE_BASE) $(COMPOSE_EXTRA)
 UPGRADE = docker compose -f docker-compose.yml -f docker-compose.postgres.yml -f docker-compose.upgrade.yml

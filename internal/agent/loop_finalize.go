@@ -204,5 +204,6 @@ func (l *Loop) finalizeRun(
 		Deliverables:   rs.deliverables,
 		BlockReplies:   rs.blockReplies,
 		LastBlockReply: rs.lastBlockReply,
+		LoopKilled:     rs.loopKilled,
 	}
 }

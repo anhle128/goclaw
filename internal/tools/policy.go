@@ -100,7 +100,7 @@ func NewPolicyEngine(cfg *config.ToolsConfig) *PolicyEngine {
 // FilterTools returns only the tools allowed by the policy for the given context.
 // It evaluates the 7-step pipeline and returns filtered provider definitions.
 func (pe *PolicyEngine) FilterTools(
-	registry *Registry,
+	registry ToolExecutor,
 	agentID string,
 	providerName string,
 	agentToolPolicy *config.ToolPolicySpec,

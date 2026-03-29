@@ -21,11 +21,18 @@ import (
 func (m *AgentsMethods) handleUpdate(ctx context.Context, client *gateway.Client, req *protocol.RequestFrame) {
 	locale := store.LocaleFromContext(ctx)
 	var params struct {
-		AgentID   string `json:"agentId"`
-		Name      string `json:"name"`
-		Workspace string `json:"workspace"`
-		Model     string `json:"model"`
-		Avatar    string `json:"avatar"`
+		AgentID           string `json:"agentId"`
+		Name              string `json:"name"`
+		Workspace         string `json:"workspace"`
+		Provider          string `json:"provider"`
+		Model             string `json:"model"`
+		Avatar            string `json:"avatar"`
+		Status            string `json:"status"`
+		Frontmatter       string `json:"frontmatter"`
+		ContextWindow     *int   `json:"context_window"`
+		MaxToolIterations *int   `json:"max_tool_iterations"`
+		IsDefault         *bool  `json:"is_default"`
+		BudgetCents       *int   `json:"budget_monthly_cents"`
 		// Per-agent config overrides
 		ToolsConfig      json.RawMessage `json:"tools_config,omitempty"`
 		SubagentsConfig  json.RawMessage `json:"subagents_config,omitempty"`
@@ -61,8 +68,29 @@ func (m *AgentsMethods) handleUpdate(ctx context.Context, client *gateway.Client
 			updates["workspace"] = ws
 			os.MkdirAll(ws, 0755)
 		}
+		if params.Provider != "" {
+			updates["provider"] = params.Provider
+		}
 		if params.Model != "" {
 			updates["model"] = params.Model
+		}
+		if params.Status != "" {
+			updates["status"] = params.Status
+		}
+		if params.Frontmatter != "" {
+			updates["frontmatter"] = params.Frontmatter
+		}
+		if params.ContextWindow != nil {
+			updates["context_window"] = *params.ContextWindow
+		}
+		if params.MaxToolIterations != nil {
+			updates["max_tool_iterations"] = *params.MaxToolIterations
+		}
+		if params.IsDefault != nil {
+			updates["is_default"] = *params.IsDefault
+		}
+		if params.BudgetCents != nil {
+			updates["budget_monthly_cents"] = *params.BudgetCents
 		}
 		// Per-agent JSONB config overrides
 		if len(params.ToolsConfig) > 0 {
@@ -129,6 +157,9 @@ func (m *AgentsMethods) handleUpdate(ctx context.Context, client *gateway.Client
 		}
 
 		m.agents.InvalidateAgent(params.AgentID)
+		// Also invalidate by UUID — heartbeat/cron sessions cached under UUID key
+		// before the agentKey fix may still be in the router cache.
+		m.agents.InvalidateAgent(ag.ID.String())
 	} else {
 		// --- Fallback: config.json ---
 		spec, ok := m.cfg.Agents.List[params.AgentID]
@@ -146,11 +177,23 @@ func (m *AgentsMethods) handleUpdate(ctx context.Context, client *gateway.Client
 			spec.Workspace = config.ExpandHome(params.Workspace)
 			os.MkdirAll(spec.Workspace, 0755)
 		}
+		if params.Provider != "" {
+			spec.Provider = params.Provider
+		}
 		if params.Model != "" {
 			spec.Model = params.Model
 		}
+		if params.ContextWindow != nil {
+			spec.ContextWindow = *params.ContextWindow
+		}
+		if params.MaxToolIterations != nil {
+			spec.MaxToolIterations = *params.MaxToolIterations
+		}
 
 		if params.AgentID == "default" {
+			if params.Provider != "" {
+				m.cfg.Agents.Defaults.Provider = params.Provider
+			}
 			if params.Model != "" {
 				m.cfg.Agents.Defaults.Model = params.Model
 			}

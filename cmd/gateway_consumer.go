@@ -43,9 +43,24 @@ func consumeInboundMessages(ctx context.Context, msgBus *bus.MessageBus, agents 
 		return v.(*sync.Mutex)
 	}
 
+	// Construct shared dependencies once — passed by pointer to all handlers.
+	deps := &ConsumerDeps{
+		Cfg:              cfg,
+		Agents:           agents,
+		Sched:            sched,
+		ChannelMgr:       channelMgr,
+		MsgBus:           msgBus,
+		TeamStore:        teamStore,
+		AgentStore:       agentStore,
+		SessStore:        sessStore,
+		PostTurn:         postTurn,
+		QuotaChecker:     quotaChecker,
+		ContactCollector: contactCollector,
+		GetAnnounceMu:    getAnnounceMu,
+	}
+
 	// Track running teammate tasks so they can be cancelled when the task is
 	// cancelled/failed externally (e.g. lead cancels via team_tasks tool).
-	var taskRunSessions sync.Map // taskID (string) → sessionKey (string)
 	msgBus.Subscribe("consumer.team-task-cancel", func(event bus.Event) {
 		if event.Name != protocol.EventTeamTaskCancelled && event.Name != protocol.EventTeamTaskFailed {
 			return
@@ -54,12 +69,12 @@ func consumeInboundMessages(ctx context.Context, msgBus *bus.MessageBus, agents 
 		if !ok {
 			return
 		}
-		if sessKey, ok := taskRunSessions.Load(payload.TaskID); ok {
+		if sessKey, ok := deps.TaskRunSessions.Load(payload.TaskID); ok {
 			if cancelled := sched.CancelSession(sessKey.(string)); cancelled {
 				slog.Info("team task cancelled: stopped running agent",
 					"task_id", payload.TaskID, "session", sessKey)
 			}
-			taskRunSessions.Delete(payload.TaskID)
+			deps.TaskRunSessions.Delete(payload.TaskID)
 		}
 	})
 
@@ -72,7 +87,7 @@ func consumeInboundMessages(ctx context.Context, msgBus *bus.MessageBus, agents 
 	debouncer := bus.NewInboundDebouncer(
 		time.Duration(debounceMs)*time.Millisecond,
 		func(msg bus.InboundMessage) {
-			processNormalMessage(ctx, msg, agents, cfg, sched, channelMgr, teamStore, quotaChecker, sessStore, agentStore, contactCollector, postTurn, msgBus)
+			processNormalMessage(ctx, msg, deps)
 		},
 	)
 	defer debouncer.Stop()
@@ -81,9 +96,8 @@ func consumeInboundMessages(ctx context.Context, msgBus *bus.MessageBus, agents 
 
 	// Track background goroutines (subagent announces, teammate messages)
 	// so shutdown can wait for in-flight work to complete.
-	var bgWg sync.WaitGroup
 	defer func() {
-		bgWg.Wait()
+		deps.BgWg.Wait()
 		slog.Info("inbound consumer: all background goroutines drained")
 	}()
 
@@ -103,22 +117,22 @@ func consumeInboundMessages(ctx context.Context, msgBus *bus.MessageBus, agents 
 			}
 		}
 
-		if handleSubagentAnnounce(ctx, msg, cfg, sched, channelMgr, msgBus, getAnnounceMu, &bgWg) {
+		if handleSubagentAnnounce(ctx, msg, deps) {
 			continue
 		}
-		if handleTeammateMessage(ctx, msg, cfg, sched, channelMgr, teamStore, agentStore, msgBus, postTurn, &taskRunSessions, &bgWg) {
+		if handleTeammateMessage(ctx, msg, deps) {
 			continue
 		}
-		if handleResetCommand(msg, cfg, sessStore) {
+		if handleResetCommand(msg, deps) {
 			continue
 		}
-		if handleStopCommand(msg, cfg, sched, sessStore, msgBus) {
+		if handleStopCommand(msg, deps) {
 			continue
 		}
 
 		// Blocker escalation messages bypass debounce — deliver immediately to leader.
 		if msg.SenderID == "system:escalation" {
-			go processNormalMessage(ctx, msg, agents, cfg, sched, channelMgr, teamStore, quotaChecker, sessStore, agentStore, contactCollector, postTurn, msgBus)
+			go processNormalMessage(ctx, msg, deps)
 			continue
 		}
 
