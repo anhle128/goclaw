@@ -28,10 +28,15 @@ const (
 	ProviderYesScale        = "yescale"
 	ProviderZai             = "zai"
 	ProviderZaiCoding       = "zai_coding"
-	ProviderOllama          = "ollama"       // local or self-hosted Ollama (no API key)
+	ProviderOllama          = "ollama"          // local or self-hosted Ollama (no API key)
+	ProviderAnthropicOAuth  = "anthropic_oauth" // Anthropic OAuth setup token (sk-ant-oat01-)
 	ProviderOllamaCloud     = "ollama_cloud"    // Ollama Cloud (Bearer token required)
 	ProviderACP             = "acp"             // ACP (Agent Client Protocol) agent subprocess
-	ProviderAnthropicOAuth  = "anthropic_oauth" // Anthropic OAuth setup token (sk-ant-oat01-)
+	ProviderNovita          = "novita"          // Novita AI (OpenAI-compatible endpoint)
+
+	// Novita AI defaults.
+	NovitaDefaultAPIBase = "https://api.novita.ai/openai"
+	NovitaDefaultModel   = "moonshotai/kimi-k2.5"
 )
 
 // ValidProviderTypes lists all accepted provider_type values.
@@ -58,7 +63,7 @@ var ValidProviderTypes = map[string]bool{
 	ProviderOllama:          true,
 	ProviderOllamaCloud:     true,
 	ProviderACP:             true,
-	ProviderAnthropicOAuth:  true,
+	ProviderNovita:          true,
 }
 
 // LLMProviderData represents an LLM provider configuration.
@@ -78,8 +83,13 @@ type LLMProviderData struct {
 type EmbeddingSettings struct {
 	Enabled    bool   `json:"enabled"`
 	Model      string `json:"model,omitempty"`      // e.g. "text-embedding-3-small"
-	APIBase    string `json:"api_base,omitempty"`    // override if embedding endpoint differs from chat
+	APIBase    string `json:"api_base,omitempty"`   // override if embedding endpoint differs from chat
 	Dimensions int    `json:"dimensions,omitempty"` // truncate output to N dims (e.g. 1536); 0 = model default
+}
+
+// ChatGPTOAuthProviderSettings holds provider-level defaults for Codex account pooling.
+type ChatGPTOAuthProviderSettings struct {
+	CodexPool *ChatGPTOAuthRoutingConfig `json:"codex_pool,omitempty"`
 }
 
 // ParseEmbeddingSettings extracts embedding config from a provider's settings JSONB.
@@ -95,6 +105,23 @@ func ParseEmbeddingSettings(settings json.RawMessage) *EmbeddingSettings {
 		return nil
 	}
 	return s.Embedding
+}
+
+// ParseChatGPTOAuthProviderSettings extracts provider-level Codex pool defaults from settings JSONB.
+func ParseChatGPTOAuthProviderSettings(settings json.RawMessage) *ChatGPTOAuthProviderSettings {
+	if len(settings) == 0 {
+		return nil
+	}
+	var s ChatGPTOAuthProviderSettings
+	if json.Unmarshal(settings, &s) != nil {
+		return nil
+	}
+	s.CodexPool = normalizeChatGPTOAuthRoutingConfig(s.CodexPool)
+	if s.CodexPool == nil {
+		return nil
+	}
+	s.CodexPool.OverrideMode = ""
+	return &s
 }
 
 // NoEmbeddingTypes lists provider types that cannot serve embeddings.

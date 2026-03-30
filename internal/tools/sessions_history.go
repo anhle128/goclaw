@@ -70,15 +70,23 @@ func (t *SessionsHistoryTool) Execute(ctx context.Context, args map[string]any) 
 
 	includeTools, _ := args["include_tools"].(bool)
 
-	// Security: validate session belongs to current agent
+	// Security: validate session belongs to current agent (fail-closed)
 	agentID := resolveAgentIDString(ctx)
-	if agentID != "" && !strings.HasPrefix(sessionKey, "agent:"+agentID+":") {
+	if agentID == "" {
+		return ErrorResult("agent context required")
+	}
+	if !strings.HasPrefix(sessionKey, "agent:"+agentID+":") {
 		return ErrorResult("access denied: session belongs to a different agent")
 	}
 
 	history := t.sessions.GetHistory(ctx, sessionKey)
 	if history == nil {
-		return SilentResult(`{"session_key":"` + sessionKey + `","messages":[],"count":0}`)
+		out, _ := json.Marshal(map[string]any{
+			"session_key": sessionKey,
+			"messages":    []any{},
+			"count":       0,
+		})
+		return SilentResult(string(out))
 	}
 
 	// Filter tool messages
@@ -119,10 +127,12 @@ func (t *SessionsHistoryTool) Execute(ctx context.Context, args map[string]any) 
 
 	// Cap total bytes
 	if len(out) > historyMaxTotalBytes {
-		return SilentResult(fmt.Sprintf(
-			`{"session_key":"%s","error":"history too large (%d bytes), use smaller limit","count":%d}`,
-			sessionKey, len(out), len(entries),
-		))
+		errOut, _ := json.Marshal(map[string]any{
+			"session_key": sessionKey,
+			"error":       fmt.Sprintf("history too large (%d bytes), use smaller limit", len(out)),
+			"count":       len(entries),
+		})
+		return SilentResult(string(errOut))
 	}
 
 	return SilentResult(string(out))

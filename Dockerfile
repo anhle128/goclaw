@@ -45,6 +45,7 @@ ARG ENABLE_SANDBOX=false
 ARG ENABLE_PYTHON=false
 ARG ENABLE_NODE=false
 ARG ENABLE_FULL_SKILLS=false
+ARG ENABLE_CLAUDE_CLI=false
 
 # Install ca-certificates + wget (healthcheck) + optional runtimes.
 # ENABLE_FULL_SKILLS=true pre-installs all skill deps (larger image, no on-demand install needed).
@@ -66,9 +67,13 @@ RUN set -eux; \
             apk add --no-cache python3 py3-pip; \
             pip3 install --no-cache-dir --break-system-packages edge-tts; \
         fi; \
-        if [ "$ENABLE_NODE" = "true" ]; then \
+        if [ "$ENABLE_NODE" = "true" ] || [ "$ENABLE_CLAUDE_CLI" = "true" ]; then \
             apk add --no-cache nodejs npm; \
         fi; \
+    fi; \
+    if [ "$ENABLE_CLAUDE_CLI" = "true" ]; then \
+        npm install -g --cache /tmp/npm-cache @anthropic-ai/claude-code; \
+        rm -rf /tmp/npm-cache; \
     fi
 
 # Non-root user

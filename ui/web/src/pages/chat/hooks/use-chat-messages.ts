@@ -47,6 +47,7 @@ export function useChatMessages(sessionKey: string, agentId: string) {
   const prevKeyRef = useRef(sessionKey);
   useEffect(() => {
     if (sessionKey === prevKeyRef.current) return;
+    const wasEmpty = !prevKeyRef.current;
     prevKeyRef.current = sessionKey;
     setStreamText(null);
     setThinkingText(null);
@@ -56,7 +57,11 @@ export function useChatMessages(sessionKey: string, agentId: string) {
     setBlockReplies([]);
     setTeamTasks([]);
     runIdRef.current = null;
-    expectingRunRef.current = false;
+    // Only reset when switching between existing sessions, not on "" → new key
+    // (the "" → key transition is part of the send flow for new sessions).
+    if (!wasEmpty) {
+      expectingRunRef.current = false;
+    }
     streamRef.current = "";
     thinkingRef.current = "";
     toolStreamRef.current = [];
@@ -100,7 +105,7 @@ export function useChatMessages(sessionKey: string, agentId: string) {
           chatMsg.mediaItems = m.media_refs.map((ref) => ({
             path: toFileUrl(ref.path || ref.id),
             mimeType: ref.mime_type,
-            fileName: ref.path?.split("/").pop() ?? ref.id,
+            fileName: (ref.path?.split("?")[0]?.split("/").pop()) ?? ref.id,
             kind: (ref.kind as MediaItem["kind"]) || "document",
           }));
         }
@@ -139,12 +144,33 @@ export function useChatMessages(sessionKey: string, agentId: string) {
     }
   }, [ws, agentId, sessionKey]);
 
-  // Load history when session changes
+  // Load history, restore running state and active tasks when session changes.
+  // Cancelled flag prevents stale RPC responses from overwriting state on rapid switches.
   useEffect(() => {
+    let cancelled = false;
     if (sessionKey) {
       loadHistory();
+      // Restore session running state
+      ws.call<{ isRunning?: boolean; activity?: RunActivity }>(Methods.CHAT_SESSION_STATUS, { sessionKey })
+        .then((res) => {
+          if (cancelled) return;
+          if (res.isRunning) setIsRunning(true);
+          if (res.activity) {
+            setActivity(res.activity);
+            activityRef.current = res.activity;
+          }
+        })
+        .catch(() => {});
+      // Restore active team tasks (teams module may not be configured)
+      ws.call<{ tasks?: ActiveTeamTask[] }>(Methods.TEAMS_TASK_ACTIVE_BY_SESSION, { sessionKey })
+        .then((res) => {
+          if (cancelled) return;
+          if (res.tasks && res.tasks.length > 0) setTeamTasks(res.tasks);
+        })
+        .catch(() => {});
     }
-  }, [sessionKey, loadHistory]);
+    return () => { cancelled = true; };
+  }, [sessionKey, loadHistory, ws]);
 
   // Called before sending a message so the event handler knows to capture run.started
   const expectRun = useCallback(() => {
@@ -318,7 +344,7 @@ export function useChatMessages(sessionKey: string, agentId: string) {
             ? rawMedia.map((m) => ({
                 path: toFileUrl(m.path),
                 mimeType: m.content_type ?? "application/octet-stream",
-                fileName: m.path.split("/").pop() ?? "file",
+                fileName: m.path.split("?")[0]?.split("/").pop() ?? "file",
                 size: m.size,
                 kind: mediaKindFromMime(m.content_type ?? ""),
               }))
@@ -359,6 +385,37 @@ export function useChatMessages(sessionKey: string, agentId: string) {
           ]);
           break;
         }
+        // User-initiated cancellation — clear state, preserve partial content.
+        case "run.cancelled": {
+          cancelAnimationFrame(rafHandleRef.current);
+          rafPendingRef.current = false;
+
+          setIsRunning(false);
+          runIdRef.current = null;
+
+          const streamed = streamRef.current;
+          setStreamText(null);
+          setThinkingText(null);
+          setToolStream([]);
+          streamRef.current = "";
+          thinkingRef.current = "";
+          toolStreamRef.current = [];
+          activityRef.current = null;
+          setActivity(null);
+          blockRepliesRef.current = [];
+          setBlockReplies([]);
+
+          // Promote partial streamed text or reload history
+          if (streamed) {
+            setMessages((prev) => [
+              ...prev,
+              { role: "assistant", content: streamed, timestamp: Date.now() },
+            ]);
+          } else {
+            loadHistory();
+          }
+          break;
+        }
       }
     },
     [loadHistory],
@@ -380,8 +437,15 @@ export function useChatMessages(sessionKey: string, agentId: string) {
         progress_percent?: number;
         progress_step?: string;
         reason?: string;
+        channel?: string;
       };
       if (!event?.team_id) return;
+
+      // Only process team task events from WS channel (matches handleAgentEvent filter).
+      // Prevents channel events (Telegram, Discord, etc.) leaking into web UI chat.
+      if (event.channel && event.channel !== "ws") {
+        return;
+      }
 
       setTeamTasks((prev) => {
         const existing = prev.find((t) => t.taskId === event.task_id);

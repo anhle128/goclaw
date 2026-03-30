@@ -56,19 +56,19 @@ func (sm *SubagentManager) runTask(ctx context.Context, task *SubagentTask, call
 			announceContent := FormatBatchedAnnounce([]AnnounceQueueItem{item}, roster)
 
 			announceMeta := map[string]string{
-				"origin_channel":      task.OriginChannel,
-				"origin_peer_kind":    task.OriginPeerKind,
-				"parent_agent":        task.ParentID,
-				"subagent_id":         task.ID,
-				"subagent_label":      task.Label,
-				"origin_trace_id":     task.OriginTraceID.String(),
-				"origin_root_span_id": task.OriginRootSpanID.String(),
+				MetaOriginChannel:    task.OriginChannel,
+				MetaOriginPeerKind:   task.OriginPeerKind,
+				MetaParentAgent:      task.ParentID,
+				"subagent_id":        task.ID,
+				MetaSubagentLabel:    task.Label,
+				MetaOriginTraceID:    task.OriginTraceID.String(),
+				MetaOriginRootSpanID: task.OriginRootSpanID.String(),
 			}
 			if task.OriginLocalKey != "" {
-				announceMeta["origin_local_key"] = task.OriginLocalKey
+				announceMeta[MetaOriginLocalKey] = task.OriginLocalKey
 			}
 			if task.OriginSessionKey != "" {
-				announceMeta["origin_session_key"] = task.OriginSessionKey
+				announceMeta[MetaOriginSessionKey] = task.OriginSessionKey
 			}
 			sm.msgBus.PublishInbound(bus.InboundMessage{
 				Channel:  "system",

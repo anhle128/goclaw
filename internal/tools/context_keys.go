@@ -356,6 +356,27 @@ func TeamTaskIDFromCtx(ctx context.Context) string {
 	return ""
 }
 
+// --- Leader agent ID propagation (team task dispatch → memory interceptor) ---
+
+const ctxLeaderAgentID toolContextKey = "tool_leader_agent_id"
+
+// WithLeaderAgentID injects the team leader's agent UUID string into context
+// so the memory interceptor can fallback-read leader's memory for team members.
+func WithLeaderAgentID(ctx context.Context, id string) context.Context {
+	return context.WithValue(ctx, ctxLeaderAgentID, id)
+}
+
+// LeaderAgentIDFromCtx returns the leader's agent UUID string from context.
+func LeaderAgentIDFromCtx(ctx context.Context) string {
+	if v, _ := ctx.Value(ctxLeaderAgentID).(string); v != "" {
+		return v
+	}
+	if rc := store.RunContextFromCtx(ctx); rc != nil {
+		return rc.LeaderAgentID
+	}
+	return ""
+}
+
 // --- Workspace scope propagation (delegation origin) ---
 
 const (
@@ -487,6 +508,48 @@ func InjectTeamDispatch(ctx context.Context, postTurn PostTurnProcessor) (contex
 		}
 	}
 	return ctx, drain
+}
+
+// --- Delivered media tracker (write_file → message self-send dedup) ---
+
+const ctxDeliveredMedia toolContextKey = "tool_delivered_media"
+
+// DeliveredMedia tracks file paths already queued for auto-delivery by write_file.
+// Injected once per run via WithDeliveredMedia; write_file marks paths, message reads them.
+// Thread-safe: tools may execute in parallel goroutines.
+type DeliveredMedia struct {
+	mu    sync.Mutex
+	paths map[string]bool
+}
+
+// NewDeliveredMedia creates an empty tracker.
+func NewDeliveredMedia() *DeliveredMedia {
+	return &DeliveredMedia{paths: make(map[string]bool)}
+}
+
+// Mark records a file path as queued for delivery.
+func (dm *DeliveredMedia) Mark(path string) {
+	dm.mu.Lock()
+	dm.paths[path] = true
+	dm.mu.Unlock()
+}
+
+// IsDelivered reports whether a file path has already been queued.
+func (dm *DeliveredMedia) IsDelivered(path string) bool {
+	dm.mu.Lock()
+	defer dm.mu.Unlock()
+	return dm.paths[path]
+}
+
+// WithDeliveredMedia injects a delivered media tracker into context.
+func WithDeliveredMedia(ctx context.Context, dm *DeliveredMedia) context.Context {
+	return context.WithValue(ctx, ctxDeliveredMedia, dm)
+}
+
+// DeliveredMediaFromCtx returns the delivered media tracker, or nil.
+func DeliveredMediaFromCtx(ctx context.Context) *DeliveredMedia {
+	v, _ := ctx.Value(ctxDeliveredMedia).(*DeliveredMedia)
+	return v
 }
 
 // --- Run media file paths (for team workspace auto-collect) ---
