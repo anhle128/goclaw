@@ -33,7 +33,7 @@ type ProvidersHandler struct {
 	cliMu           sync.Mutex                       // serializes Claude CLI provider create to prevent duplicates
 	msgBus          *bus.MessageBus
 	sysConfigStore  store.SystemConfigStore
-	tracingStore    store.TracingStore // optional: for provider-scoped pool activity
+	tracingStore    store.TracingStore   // optional: for provider-scoped pool activity
 	agents          store.AgentCRUDStore // optional: for provider pool activity agent lookup
 }
 

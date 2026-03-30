@@ -29,10 +29,10 @@ const (
 	ProviderZai             = "zai"
 	ProviderZaiCoding       = "zai_coding"
 	ProviderOllama          = "ollama"          // local or self-hosted Ollama (no API key)
+	ProviderAnthropicOAuth  = "anthropic_oauth" // Anthropic OAuth setup token (sk-ant-oat01-)
 	ProviderOllamaCloud     = "ollama_cloud"    // Ollama Cloud (Bearer token required)
 	ProviderACP             = "acp"             // ACP (Agent Client Protocol) agent subprocess
 	ProviderNovita          = "novita"          // Novita AI (OpenAI-compatible endpoint)
-	ProviderAnthropicOAuth  = "anthropic_oauth" // Anthropic OAuth setup token (sk-ant-oat01-)
 
 	// Novita AI defaults.
 	NovitaDefaultAPIBase = "https://api.novita.ai/openai"

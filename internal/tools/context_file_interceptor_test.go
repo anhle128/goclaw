@@ -40,6 +40,9 @@ func (s *stubAgentStore) SetUserContextFile(_ context.Context, _ uuid.UUID, _, _
 func (s *stubAgentStore) DeleteUserContextFile(_ context.Context, _ uuid.UUID, _, _ string) error {
 	return nil
 }
+func (s *stubAgentStore) ListUserContextFilesByName(_ context.Context, _ uuid.UUID, _ string) ([]store.UserContextFileData, error) {
+	return nil, nil
+}
 
 // Remaining interface methods — not exercised in these tests.
 func (s *stubAgentStore) Create(_ context.Context, _ *store.AgentData) error              { return nil }

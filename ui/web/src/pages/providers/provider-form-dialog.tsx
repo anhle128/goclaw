@@ -138,7 +138,6 @@ export function ProviderFormDialog({ open, onOpenChange, onSubmit, existingProvi
           <DialogDescription>{isOAuth ? t("form.configureOauth") : t("form.configure")}</DialogDescription>
         </DialogHeader>
         <div className="-mx-4 min-h-0 overflow-y-auto px-4 py-4 sm:-mx-6 sm:px-6 space-y-4">
-          {/* Provider type selector — always shown in create mode */}
           <ProviderTypeSelect
             value={providerType}
             hasClaudeCLI={hasClaudeCLI}
