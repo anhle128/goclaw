@@ -4,12 +4,13 @@ import "encoding/json"
 
 // buildRawBlock reconstructs a complete content block from streaming data.
 // This is needed to preserve thinking blocks (with signatures) for tool use passback.
-func (p *AnthropicProvider) buildRawBlock(blockType string, result *ChatResponse, toolCallJSON map[int]string, _ int) json.RawMessage {
+func (p *AnthropicProvider) buildRawBlock(blockType string, result *ChatResponse, toolCallJSON map[int]string, _ int, signature string) json.RawMessage {
 	switch blockType {
 	case "thinking":
 		block := map[string]any{
-			"type":     "thinking",
-			"thinking": result.Thinking,
+			"type":      "thinking",
+			"thinking":  result.Thinking,
+			"signature": signature,
 		}
 		if b, err := json.Marshal(block); err == nil {
 			return b

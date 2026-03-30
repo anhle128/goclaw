@@ -30,6 +30,7 @@ func (p *AnthropicProvider) ChatStream(ctx context.Context, req ChatRequest, onC
 	// Track content blocks for RawAssistantContent (needed for thinking block passback)
 	var rawContentBlocks []json.RawMessage
 	var currentBlockType string
+	var currentSignature string
 	// Track thinking token count by accumulated chunk size
 	thinkingChars := 0
 
@@ -102,7 +103,7 @@ func (p *AnthropicProvider) ChatStream(ctx context.Context, req ChatRequest, onC
 						toolCallJSON[idx] += ev.Delta.PartialJSON
 					}
 				case "signature_delta":
-					// Signature is captured in content_block_stop via raw block reconstruction
+					currentSignature += ev.Delta.Signature
 				}
 			}
 
@@ -110,12 +111,13 @@ func (p *AnthropicProvider) ChatStream(ctx context.Context, req ChatRequest, onC
 			// Reconstruct the complete content block for RawAssistantContent
 			if len(rawContentBlocks) > 0 {
 				idx := len(rawContentBlocks) - 1
-				block := p.buildRawBlock(currentBlockType, result, toolCallJSON, idx)
+				block := p.buildRawBlock(currentBlockType, result, toolCallJSON, idx, currentSignature)
 				if block != nil {
 					rawContentBlocks[idx] = block
 				}
 			}
 			currentBlockType = ""
+			currentSignature = ""
 
 		case "message_delta":
 			var ev anthropicMessageDeltaEvent
