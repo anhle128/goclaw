@@ -39,20 +39,27 @@ func formatDottedOrder(t time.Time, id uuid.UUID) string {
 	)
 }
 
-// spanToRunCreate converts a GoClaw SpanData (initial "running" span) into
-// a LangSmith RunCreate. For two-phase spans, outputs/end_time will be set
-// later via RunUpdate when the span update arrives.
-func spanToRunCreate(s store.SpanData) *langsmith.RunCreate {
-	// Root runs (no parent): dotted_order must start with TraceID so it matches trace_id.
-	// Child runs: dotted_order uses the span's own ID.
-	dottedOrderID := s.ID
+// spanToRunCreate converts a GoClaw SpanData into a LangSmith RunCreate.
+// parentDottedOrder is the parent's dotted_order for building child hierarchy;
+// empty for root runs. parentLangsmithID remaps ParentSpanID when the parent's
+// LangSmith run ID differs from its GoClaw span ID (root span remapping).
+func spanToRunCreate(s store.SpanData, parentDottedOrder string, parentLangsmithID *uuid.UUID) *langsmith.RunCreate {
+	// LangSmith requires root run_id == trace_id. For root spans (no parent),
+	// use TraceID as the run ID so both constraints are satisfied.
+	runID := s.ID
 	if s.ParentSpanID == nil {
-		dottedOrderID = s.TraceID
+		runID = s.TraceID
 	}
-	dottedOrder := formatDottedOrder(s.StartTime, dottedOrderID)
+
+	// Build dotted_order: root = "<ts><runID>", child = "<parentDO>.<ts><runID>".
+	segment := formatDottedOrder(s.StartTime, runID)
+	dottedOrder := segment
+	if parentDottedOrder != "" {
+		dottedOrder = parentDottedOrder + "." + segment
+	}
 
 	rc := &langsmith.RunCreate{
-		ID:          s.ID,
+		ID:          runID,
 		TraceID:     s.TraceID,
 		Name:        s.Name,
 		RunType:     mapRunType(s.SpanType),
@@ -61,7 +68,11 @@ func spanToRunCreate(s store.SpanData) *langsmith.RunCreate {
 	}
 
 	if s.ParentSpanID != nil {
-		rc.ParentRunID = s.ParentSpanID
+		if parentLangsmithID != nil {
+			rc.ParentRunID = parentLangsmithID
+		} else {
+			rc.ParentRunID = s.ParentSpanID
+		}
 	}
 
 	// Build inputs based on span type.
@@ -244,6 +255,62 @@ func toFloat(v any) (float64, bool) {
 		return float64(n), true
 	default:
 		return 0, false
+	}
+}
+
+// applySpanUpdate applies a deferred span update to a buffered RunCreate,
+// producing a complete single-shot POST. Used for child spans to avoid
+// standalone PATCH operations (which lack parent_run_id and fail validation).
+func applySpanUpdate(rc *langsmith.RunCreate, u tracing.SpanUpdate) {
+	outputs := make(map[string]any)
+	if rc.Outputs != nil {
+		for k, v := range rc.Outputs {
+			outputs[k] = v
+		}
+	}
+	usage := make(map[string]any)
+
+	for k, v := range u.Updates {
+		switch k {
+		case "end_time":
+			if t, ok := v.(time.Time); ok {
+				rc.EndTime = t
+			}
+		case "error":
+			if s, ok := v.(string); ok && s != "" {
+				rc.Error = s
+			}
+		case "output_preview":
+			if s, ok := v.(string); ok {
+				outputs["content"] = s
+			}
+		case "input_tokens":
+			if n, ok := toInt(v); ok {
+				usage["prompt_tokens"] = n
+			}
+		case "output_tokens":
+			if n, ok := toInt(v); ok {
+				usage["completion_tokens"] = n
+			}
+		case "finish_reason":
+			if s, ok := v.(string); ok {
+				outputs["finish_reason"] = s
+			}
+		case "total_cost":
+			if f, ok := toFloat(v); ok {
+				outputs["total_cost"] = f
+			}
+		}
+	}
+
+	if len(usage) > 0 {
+		pt, _ := toInt(usage["prompt_tokens"])
+		ct, _ := toInt(usage["completion_tokens"])
+		usage["total_tokens"] = pt + ct
+		outputs["usage"] = usage
+	}
+	if len(outputs) > 0 {
+		rc.Outputs = outputs
 	}
 }
 
