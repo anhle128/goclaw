@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	langsmith "github.com/langchain-ai/langsmith-go"
 
 	"github.com/nextlevelbuilder/goclaw/internal/store"
@@ -19,10 +20,29 @@ const (
 	pendingPruneFreq = 2 * time.Minute
 )
 
-// pendingEntry stores metadata needed when a two-phase span update arrives.
+// pendingEntry stores metadata needed when a root span's two-phase update arrives.
+// Only used for root spans; child spans use childBuf instead.
 type pendingEntry struct {
-	createdAt   time.Time
+	createdAt      time.Time
+	dottedOrder    string
+	langsmithRunID uuid.UUID // may differ from span ID (root spans use TraceID)
+}
+
+// runInfo tracks a LangSmith run's remapped ID and dotted_order so child
+// spans can build proper hierarchy and parent references.
+type runInfo struct {
+	langsmithID uuid.UUID
 	dottedOrder string
+	createdAt   time.Time
+}
+
+// childBufEntry stores a pre-built RunCreate for a child "running" span.
+// Instead of sending POST+PATCH (which fails when PATCH arrives in a
+// different sink batch without parent_run_id), we buffer until the
+// update arrives, then send a single complete POST.
+type childBufEntry struct {
+	rc        *langsmith.RunCreate
+	createdAt time.Time
 }
 
 // Config configures the LangSmith exporter.
@@ -37,9 +57,19 @@ type Config struct {
 type Exporter struct {
 	client *langsmith.TracingClient
 
-	// pending tracks "running" spans (two-phase start) waiting for their
-	// update. Key: spanID, value: pendingEntry.
-	pending   sync.Map
+	// pending tracks root "running" spans (two-phase POST+PATCH).
+	// Key: GoClaw spanID, value: pendingEntry.
+	pending sync.Map
+
+	// childBuf buffers child "running" spans for deferred single-shot POST.
+	// Key: GoClaw spanID, value: childBufEntry.
+	childBuf sync.Map
+
+	// runMap tracks every emitted run's LangSmith ID and dotted_order so
+	// child spans arriving in later batches can build proper hierarchy.
+	// Key: GoClaw spanID, value: runInfo.
+	runMap sync.Map
+
 	pruneOnce sync.Once
 	pruneWg   sync.WaitGroup
 	stopCh    chan struct{}
@@ -79,14 +109,57 @@ func (e *Exporter) ExportSpans(ctx context.Context, spans []store.SpanData) {
 
 	e.startPruneLoop()
 
+	// First pass: register root span ID mappings so children in the same
+	// batch can resolve their parent's LangSmith ID and dotted_order.
 	for _, s := range spans {
-		rc := spanToRunCreate(s)
+		if s.ParentSpanID == nil && s.ID != s.TraceID {
+			dottedOrder := formatDottedOrder(s.StartTime, s.TraceID)
+			e.runMap.Store(s.ID, runInfo{
+				langsmithID: s.TraceID,
+				dottedOrder: dottedOrder,
+				createdAt:   time.Now(),
+			})
+		}
+	}
+
+	for _, s := range spans {
+		// Resolve parent's LangSmith ID and dotted_order for hierarchy.
+		var parentDottedOrder string
+		var parentLangsmithID *uuid.UUID
+		if s.ParentSpanID != nil {
+			if ri, ok := e.runMap.Load(*s.ParentSpanID); ok {
+				info := ri.(runInfo)
+				parentDottedOrder = info.dottedOrder
+				parentLangsmithID = &info.langsmithID
+			}
+		}
+
+		rc := spanToRunCreate(s, parentDottedOrder, parentLangsmithID)
+
+		// Track this run for future children and two-phase updates.
+		e.runMap.Store(s.ID, runInfo{
+			langsmithID: rc.ID,
+			dottedOrder: rc.DottedOrder,
+			createdAt:   time.Now(),
+		})
 
 		if isRunningSpan(s) {
-			// Two-phase: span just started. Track it so we can send RunUpdate later.
+			if s.ParentSpanID != nil {
+				// Child running span: buffer for deferred single-shot POST.
+				// Standalone PATCHes for children fail LangSmith validation
+				// because RunUpdate has no ParentRunID field.
+				e.childBuf.Store(s.ID, childBufEntry{
+					rc:        rc,
+					createdAt: time.Now(),
+				})
+				continue
+			}
+			// Root running span: two-phase POST+PATCH is safe
+			// (run_id == trace_id, single-part dotted_order).
 			e.pending.Store(s.ID, pendingEntry{
-				createdAt:   time.Now(),
-				dottedOrder: rc.DottedOrder,
+				createdAt:      time.Now(),
+				dottedOrder:    rc.DottedOrder,
+				langsmithRunID: rc.ID,
 			})
 		}
 
@@ -105,12 +178,26 @@ func (e *Exporter) ExportSpanUpdates(ctx context.Context, updates []tracing.Span
 	}
 
 	for _, u := range updates {
-		ru := spanUpdateToRunUpdate(u)
+		// Buffered child span: apply update and send a single complete POST.
+		if entry, ok := e.childBuf.LoadAndDelete(u.SpanID); ok {
+			if cb, ok := entry.(childBufEntry); ok {
+				applySpanUpdate(cb.rc, u)
+				if err := e.client.CreateRun(cb.rc); err != nil {
+					slog.Warn("langsmith: failed to create completed child run",
+						"span_id", u.SpanID, "error", err)
+				}
+				continue
+			}
+		}
 
-		// Attach DottedOrder from the pending entry (required by LangSmith).
+		// Root span: send PATCH (run_id == trace_id, single-part DO → valid).
+		ru := spanUpdateToRunUpdate(u)
 		if entry, ok := e.pending.LoadAndDelete(u.SpanID); ok {
 			if pe, ok := entry.(pendingEntry); ok {
 				ru.DottedOrder = pe.dottedOrder
+				if pe.langsmithRunID != uuid.Nil {
+					ru.ID = pe.langsmithRunID
+				}
 			}
 		}
 
@@ -154,7 +241,8 @@ func (e *Exporter) startPruneLoop() {
 	})
 }
 
-// pruneStale removes pending entries older than pendingTTL.
+// pruneStale removes expired entries from pending, childBuf, and runMap.
+// Orphaned child buffers are flushed as incomplete runs (better than lost).
 func (e *Exporter) pruneStale() {
 	cutoff := time.Now().Add(-pendingTTL)
 	var pruned int
@@ -165,8 +253,25 @@ func (e *Exporter) pruneStale() {
 		}
 		return true
 	})
+	// Flush orphaned child buffers as incomplete runs.
+	e.childBuf.Range(func(key, value any) bool {
+		if cb, ok := value.(childBufEntry); ok && cb.createdAt.Before(cutoff) {
+			e.childBuf.Delete(key)
+			if err := e.client.CreateRun(cb.rc); err != nil {
+				slog.Warn("langsmith: failed to flush orphaned child run", "error", err)
+			}
+			pruned++
+		}
+		return true
+	})
+	e.runMap.Range(func(key, value any) bool {
+		if ri, ok := value.(runInfo); ok && ri.createdAt.Before(cutoff) {
+			e.runMap.Delete(key)
+		}
+		return true
+	})
 	if pruned > 0 {
-		slog.Debug("langsmith: pruned stale pending spans", "count", pruned)
+		slog.Debug("langsmith: pruned stale entries", "count", pruned)
 	}
 }
 
