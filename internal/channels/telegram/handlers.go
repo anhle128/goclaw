@@ -226,9 +226,14 @@ func (c *Channel) handleMessage(ctx context.Context, update telego.Update) {
 	}
 
 	// Compute sender label for group context (used in history + current message annotation)
-	senderLabel := user.FirstName
+	displayName := strings.TrimSpace(user.FirstName + " " + user.LastName)
+	senderLabel := displayName
 	if user.Username != "" {
-		senderLabel = "@" + user.Username
+		if displayName != "" {
+			senderLabel = "@" + user.Username + " (" + displayName + ")"
+		} else {
+			senderLabel = "@" + user.Username
+		}
 	}
 
 	// --- Group mention gating (matching TS mentionGate logic) ---
@@ -331,7 +336,7 @@ func (c *Channel) handleMessage(ctx context.Context, update telego.Update) {
 			// Collect contact even when bot is not mentioned (cache prevents DB spam).
 			if cc := c.ContactCollector(); cc != nil {
 				contactName := strings.TrimSpace(user.FirstName + " " + user.LastName)
-				cc.EnsureContact(ctx, c.Type(), c.Name(), userID, userID, contactName, user.Username, "group", "user")
+				cc.EnsureContact(ctx, c.Type(), c.Name(), senderID, userID, contactName, user.Username, "group", "user")
 				// Also collect group chat itself as a contact (for group permission / merge).
 				cc.EnsureContact(ctx, c.Type(), c.Name(), chatIDStr, "", message.Chat.Title, "", "group", "group")
 			}
@@ -585,7 +590,8 @@ func (c *Channel) handleMessage(ctx context.Context, update telego.Update) {
 
 	// Collect contact for processed messages (DM + group-mentioned).
 	if cc := c.ContactCollector(); cc != nil {
-		cc.EnsureContact(ctx, c.Type(), c.Name(), senderID, userID, user.FirstName, user.Username, peerKind, "user")
+		contactName := strings.TrimSpace(user.FirstName + " " + user.LastName)
+		cc.EnsureContact(ctx, c.Type(), c.Name(), senderID, userID, contactName, user.Username, peerKind, "user")
 		// Also collect group chat itself as a contact (for group permission / merge).
 		if isGroup {
 			cc.EnsureContact(ctx, c.Type(), c.Name(), chatIDStr, "", message.Chat.Title, "", "group", "group")

@@ -51,6 +51,7 @@ type Config struct {
 	Tts       TtsConfig       `json:"tts"`
 	Cron      CronConfig      `json:"cron"`
 	Telemetry TelemetryConfig `json:"telemetry"`
+	LangSmith LangSmithConfig `json:"langsmith"`
 	Tailscale TailscaleConfig `json:"tailscale"`
 	Bindings  []AgentBinding  `json:"bindings,omitempty"`
 	mu        sync.RWMutex
@@ -316,6 +317,15 @@ type TelemetryConfig struct {
 	ModelPricing map[string]*ModelPricing    `json:"model_pricing,omitempty"` // cost per model, key = "provider/model" or just "model"
 }
 
+// LangSmithConfig configures the LangSmith tracing exporter.
+// When APIKey is set (or LANGSMITH_API_KEY env var), spans are exported to
+// LangSmith as runs for AI-specific observability.
+type LangSmithConfig struct {
+	APIKey  string `json:"api_key,omitempty"`  // LangSmith API key (required to enable)
+	Project string `json:"project,omitempty"`  // project name (default: "default")
+	APIUrl  string `json:"api_url,omitempty"`  // API URL override (default: LangSmith cloud)
+}
+
 // CronConfig configures the cron job system.
 type CronConfig struct {
 	MaxRetries      int    `json:"max_retries,omitempty"`      // max retry attempts on failure (default 3, 0 = no retry)
@@ -350,6 +360,7 @@ type SubagentsConfig struct {
 	MaxSpawnDepth       int    `json:"maxSpawnDepth,omitempty"`       // default 1, range 1-5
 	MaxChildrenPerAgent int    `json:"maxChildrenPerAgent,omitempty"` // default 5, range 1-20
 	ArchiveAfterMinutes int    `json:"archiveAfterMinutes,omitempty"` // default 60
+	MaxRetries          int    `json:"maxRetries,omitempty"`          // max LLM retries on error (default 2)
 	Model               string `json:"model,omitempty"`               // model override for subagents
 }
 
@@ -388,6 +399,7 @@ func (c *Config) ReplaceFrom(src *Config) {
 	c.Tts = src.Tts
 	c.Cron = src.Cron
 	c.Telemetry = src.Telemetry
+	c.LangSmith = src.LangSmith
 	c.Tailscale = src.Tailscale
 	c.Bindings = src.Bindings
 }

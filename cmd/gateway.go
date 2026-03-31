@@ -129,6 +129,8 @@ func runGateway() {
 		defer traceCollector.Stop()
 		// OTel OTLP export: compiled via build tags. Build with 'go build -tags otel' to enable.
 		initOTelExporter(context.Background(), cfg, traceCollector)
+		// LangSmith export: compiled via build tags. Build with 'go build -tags langsmith' to enable.
+		initLangSmithExporter(context.Background(), cfg, traceCollector)
 	}
 	if snapshotWorker != nil {
 		defer snapshotWorker.Stop()
@@ -219,6 +221,9 @@ func runGateway() {
 			},
 		)
 		subagentMgr.SetAnnounceQueue(announceQueue)
+		if pgStores.SubagentTasks != nil {
+			subagentMgr.SetTaskStore(pgStores.SubagentTasks)
+		}
 
 		toolsReg.Register(tools.NewSpawnTool(subagentMgr, "default", 0))
 		slog.Info("subagent system enabled", "tools", []string{"spawn"})
@@ -553,7 +558,7 @@ func runGateway() {
 		instanceLoader = channels.NewInstanceLoader(pgStores.ChannelInstances, pgStores.Agents, channelMgr, msgBus, pgStores.Pairing)
 		instanceLoader.SetProviderRegistry(providerRegistry)
 		instanceLoader.SetPendingCompactionConfig(cfg.Channels.PendingCompaction)
-		instanceLoader.RegisterFactory(channels.TypeTelegram, telegram.FactoryWithStores(pgStores.Agents, pgStores.ConfigPermissions, pgStores.Teams, pgStores.PendingMessages))
+		instanceLoader.RegisterFactory(channels.TypeTelegram, telegram.FactoryWithStores(pgStores.Agents, pgStores.ConfigPermissions, pgStores.Teams, pgStores.SubagentTasks, pgStores.PendingMessages))
 		instanceLoader.RegisterFactory(channels.TypeDiscord, discord.FactoryWithStores(pgStores.Agents, pgStores.ConfigPermissions, pgStores.PendingMessages))
 		instanceLoader.RegisterFactory(channels.TypeFeishu, feishu.FactoryWithPendingStore(pgStores.PendingMessages))
 		instanceLoader.RegisterFactory(channels.TypeZaloOA, zalo.Factory)
@@ -1088,7 +1093,7 @@ func runGateway() {
 		channelMgr.SetContactCollector(contactCollector) // propagate to all channel handlers
 	}
 
-	go consumeInboundMessages(ctx, msgBus, agentRouter, cfg, sched, channelMgr, consumerTeamStore, quotaChecker, pgStores.Sessions, pgStores.Agents, contactCollector, postTurn)
+	go consumeInboundMessages(ctx, msgBus, agentRouter, cfg, sched, channelMgr, consumerTeamStore, quotaChecker, pgStores.Sessions, pgStores.Agents, contactCollector, postTurn, subagentMgr)
 
 	// Task recovery ticker: re-dispatches stale/pending team tasks on startup and periodically.
 	var taskTicker *tasks.TaskTicker
