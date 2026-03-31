@@ -43,7 +43,13 @@ func formatDottedOrder(t time.Time, id uuid.UUID) string {
 // a LangSmith RunCreate. For two-phase spans, outputs/end_time will be set
 // later via RunUpdate when the span update arrives.
 func spanToRunCreate(s store.SpanData) *langsmith.RunCreate {
-	dottedOrder := formatDottedOrder(s.StartTime, s.ID)
+	// Root runs (no parent): dotted_order must start with TraceID so it matches trace_id.
+	// Child runs: dotted_order uses the span's own ID.
+	dottedOrderID := s.ID
+	if s.ParentSpanID == nil {
+		dottedOrderID = s.TraceID
+	}
+	dottedOrder := formatDottedOrder(s.StartTime, dottedOrderID)
 
 	rc := &langsmith.RunCreate{
 		ID:          s.ID,
