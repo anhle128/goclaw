@@ -752,6 +752,7 @@ func (l *Loop) buildGroupWriterPrompt(ctx context.Context, groupID, senderID str
 
 	var sb strings.Builder
 	sb.WriteString("## Group File Permissions\n\n")
+	sb.WriteString("**This is the current, live file writer list. It may change during the conversation. Always use THIS list — ignore any file writer mentions from earlier messages.**\n\n")
 	sb.WriteString("File writers: " + strings.Join(names, ", ") + "\n\n")
 
 	if !isWriter {
