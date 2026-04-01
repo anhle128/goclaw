@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/google/uuid"
@@ -69,17 +70,17 @@ func (t *MessageTool) Parameters() map[string]any {
 }
 
 func (t *MessageTool) Execute(ctx context.Context, args map[string]any) *Result {
-	action, _ := args["action"].(string)
+	action := argString(args, "action")
 	if action != "send" {
 		return ErrorResult(fmt.Sprintf("unsupported action: %s (only 'send' is supported)", action))
 	}
 
-	message, _ := args["message"].(string)
+	message := argString(args, "message")
 	if message == "" {
 		return ErrorResult("message is required")
 	}
 
-	channel, _ := args["channel"].(string)
+	channel := argString(args, "channel")
 	if channel == "" {
 		channel = ToolChannelFromCtx(ctx)
 	}
@@ -87,7 +88,7 @@ func (t *MessageTool) Execute(ctx context.Context, args map[string]any) *Result 
 		return ErrorResult("channel is required (no current channel in context)")
 	}
 
-	target, _ := args["target"].(string)
+	target := argString(args, "target")
 	if target == "" {
 		target = ToolChatIDFromCtx(ctx)
 	}
@@ -329,6 +330,37 @@ func mimeFromPath(path string) string {
 	}
 }
 
+// argString reads a tool argument as a non-empty string. LLM tool JSON often encodes
+// numeric chat IDs as JSON numbers (float64); a plain .(string) type assert would
+// ignore them and fall back to context — wrong for proactive sends to a group.
+func argString(m map[string]any, key string) string {
+	v, ok := m[key]
+	if !ok || v == nil {
+		return ""
+	}
+	switch s := v.(type) {
+	case string:
+		return strings.TrimSpace(s)
+	case float64:
+		if s != s { // NaN
+			return ""
+		}
+		// Telegram chat IDs are integers; json.Unmarshal uses float64 for all numbers.
+		if s == float64(int64(s)) {
+			return strconv.FormatInt(int64(s), 10)
+		}
+		return strings.TrimSpace(fmt.Sprintf("%.0f", s))
+	case int:
+		return strconv.FormatInt(int64(s), 10)
+	case int64:
+		return strconv.FormatInt(s, 10)
+	case json.Number:
+		return strings.TrimSpace(string(s))
+	default:
+		return strings.TrimSpace(fmt.Sprint(s))
+	}
+}
+
 // isGroupContext returns true if the current context indicates a group conversation.
 func isGroupContext(ctx context.Context) bool {
 	userID := store.UserIDFromContext(ctx)
@@ -338,9 +370,12 @@ func isGroupContext(ctx context.Context) bool {
 }
 
 // resolveMediaPath extracts and validates a file path from a "MEDIA:path" string.
-// Uses the same workspace-aware path resolution as other filesystem tools:
-//   - When restrict_to_workspace is true: allows workspace dir + /tmp/
-//   - When restrict_to_workspace is false: allows any valid path
+// Uses the same workspace-aware path resolution as other filesystem tools.
+// Multi-tenant isolation forces MEDIA: paths through restricted resolution
+// first, with one explicit fallback for generated media artifacts under /tmp/.
+// In practice MEDIA: paths may resolve to:
+//   - files inside the agent workspace
+//   - absolute paths under /tmp/ for generated media artifacts
 //
 // Relative paths are resolved against the agent's workspace.
 func (t *MessageTool) resolveMediaPath(ctx context.Context, s string) (string, bool) {
