@@ -73,8 +73,17 @@ export function StepProvider({ onComplete, existingProvider }: StepProviderProps
     setLoading(true);
     setError("");
     try {
-      const res = await http.get<{ providers: ProviderData[] }>("/v1/providers");
-      const provider = res.providers?.find((p) => p.provider_type === "chatgpt_oauth" && p.name === name.trim());
+      // Retry up to 3 times with 1 s delay — backend may not have committed
+      // the provider yet when the OAuth polling detects success.
+      let provider: ProviderData | undefined;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const res = await http.get<{ providers: ProviderData[] }>("/v1/providers");
+        provider = res.providers?.find(
+          (p) => p.provider_type === "chatgpt_oauth" && p.name === name.trim(),
+        );
+        if (provider) break;
+        if (attempt < 2) await new Promise((r) => setTimeout(r, 1000));
+      }
       if (!provider) {
         setError(t("provider.errors.oauthProviderNotFound"));
         return;
@@ -192,7 +201,7 @@ export function StepProvider({ onComplete, existingProvider }: StepProviderProps
               <div className="space-y-2">
                 <Label className="inline-flex items-center gap-1.5">
                   {isAnthropicOAuth ? t("provider.setupToken", "Setup Token") : t("provider.apiKey")}
-                  <InfoTip text={isAnthropicOAuth ? t("provider.apiKeyHintOAuth") : t("provider.apiKeyHint")} />
+                  <InfoTip text={isAnthropicOAuth ? t("provider.setupTokenHintTooltip") : t("provider.apiKeyHint")} />
                 </Label>
                 <Input
                   type="password"
@@ -200,6 +209,11 @@ export function StepProvider({ onComplete, existingProvider }: StepProviderProps
                   onChange={(e) => setApiKey(e.target.value)}
                   placeholder={isAnthropicOAuth ? "sk-ant-oat01-..." : "sk-..."}
                 />
+                {isAnthropicOAuth && (
+                  <p className="text-xs text-muted-foreground">
+                    {t("provider.setupTokenHint", "Run 'claude setup-token' in your terminal and paste it here.")}
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">
