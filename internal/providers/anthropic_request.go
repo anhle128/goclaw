@@ -153,6 +153,7 @@ func (p *AnthropicProvider) buildRequestBody(model string, req ChatRequest, stre
 
 	// OAuth setup tokens require the Claude Code system prompt for all requests.
 	if IsAnthropicSetupToken(p.apiKey) {
+		// this is required for the oauth setup token to work
 		const oauthSystem = "You are Claude Code, Anthropic's official CLI for Claude."
 		found := false
 		for _, block := range systemBlocks {
