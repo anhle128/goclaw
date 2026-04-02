@@ -11,13 +11,13 @@ import (
 
 func TestIsAnthropicSetupToken(t *testing.T) {
 	// Valid: correct prefix + long enough
-	validToken := "sk-ant-oat01-" + strings.Repeat("A", 80)
+	validToken := "sk-" + strings.Repeat("A", 80)
 	if !IsAnthropicSetupToken(validToken) {
 		t.Error("expected valid setup token to be recognized")
 	}
 
 	// Invalid: correct prefix but too short
-	shortToken := "sk-ant-oat01-short"
+	shortToken := "sk-short"
 	if IsAnthropicSetupToken(shortToken) {
 		t.Error("expected short token to be rejected")
 	}
@@ -38,7 +38,7 @@ func TestIsAnthropicAPIKey(t *testing.T) {
 	if !IsAnthropicAPIKey("sk-ant-api03-abc123") {
 		t.Error("expected API key to be recognized")
 	}
-	if IsAnthropicAPIKey("sk-ant-oat01-abc123") {
+	if IsAnthropicAPIKey("sk-abc123") {
 		t.Error("expected setup token to not match API key pattern")
 	}
 	if IsAnthropicAPIKey("random-string") {
@@ -53,8 +53,8 @@ func TestValidateAnthropicCredential(t *testing.T) {
 		wantErr bool
 	}{
 		{"valid API key", "sk-ant-api03-abc123", false},
-		{"valid setup token", "sk-ant-oat01-" + strings.Repeat("X", 70), false},
-		{"setup token too short", "sk-ant-oat01-short", true},
+		{"valid setup token", "sk-" + strings.Repeat("X", 70), false},
+		{"setup token too short", "sk-short", true},
 		{"wrong prefix", "sk-other-key-123", true},
 		{"empty", "", true},
 		{"whitespace only", "   ", true},
@@ -121,7 +121,7 @@ func TestDaysUntilExpiry(t *testing.T) {
 
 func TestSettingsForCredential(t *testing.T) {
 	// Setup token → setup_token settings
-	s := SettingsForCredential("sk-ant-oat01-" + strings.Repeat("Z", 70))
+	s := SettingsForCredential("sk-" + strings.Repeat("Z", 70))
 	if s.TokenType != "setup_token" {
 		t.Errorf("expected setup_token, got %s", s.TokenType)
 	}
@@ -140,15 +140,15 @@ func TestAnthropicDoRequestHeaders(t *testing.T) {
 	const anthropicOK = `{"content":[{"type":"text","text":"ok"}],"stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1}}`
 
 	apiKey := "sk-ant-api03-testkey123"
-	setupToken := "sk-ant-oat01-" + strings.Repeat("T", 80)
+	setupToken := "sk-" + strings.Repeat("T", 80)
 
 	tests := []struct {
-		name          string
-		apiKey        string
-		body          any // passed to doRequest
-		wantXAPIKey   bool
-		wantBearer    bool
-		wantBetaFlags []string // substrings expected in anthropic-beta header
+		name              string
+		apiKey            string
+		body              any // passed to doRequest
+		wantXAPIKey       bool
+		wantBearer        bool
+		wantBetaFlags     []string // substrings expected in anthropic-beta header
 		wantBrowserAccess bool
 	}{
 		{
@@ -158,11 +158,11 @@ func TestAnthropicDoRequestHeaders(t *testing.T) {
 			wantXAPIKey: true,
 		},
 		{
-			name:          "setup_token_sets_bearer_and_oauth_beta",
-			apiKey:        setupToken,
-			body:          map[string]any{"model": "claude-sonnet-4-5-20250929", "messages": []any{}},
-			wantBearer:    true,
-			wantBetaFlags: []string{"claude-code-20250219", "oauth-2025-04-20"},
+			name:              "setup_token_sets_bearer_and_oauth_beta",
+			apiKey:            setupToken,
+			body:              map[string]any{"model": "claude-sonnet-4-5-20250929", "messages": []any{}},
+			wantBearer:        true,
+			wantBetaFlags:     []string{"claude-code-20250219", "oauth-2025-04-20"},
 			wantBrowserAccess: true,
 		},
 		{
@@ -173,8 +173,8 @@ func TestAnthropicDoRequestHeaders(t *testing.T) {
 				"messages": []any{},
 				"thinking": map[string]any{"type": "enabled", "budget_tokens": 10000},
 			},
-			wantBearer:    true,
-			wantBetaFlags: []string{"claude-code-20250219", "oauth-2025-04-20", "interleaved-thinking-2025-05-14"},
+			wantBearer:        true,
+			wantBetaFlags:     []string{"claude-code-20250219", "oauth-2025-04-20", "interleaved-thinking-2025-05-14"},
 			wantBrowserAccess: true,
 		},
 	}
