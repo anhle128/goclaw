@@ -207,7 +207,7 @@ export function StepProvider({ onComplete, existingProvider }: StepProviderProps
                   type="password"
                   value={apiKey}
                   onChange={(e) => setApiKey(e.target.value)}
-                  placeholder={isAnthropicOAuth ? "sk-ant-oat01-..." : "sk-..."}
+                  placeholder={isAnthropicOAuth ? "sk-..." : "sk-..."}
                 />
                 {isAnthropicOAuth && (
                   <p className="text-xs text-muted-foreground">

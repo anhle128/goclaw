@@ -11,9 +11,9 @@ const (
 	// anthropicAPIKeyPrefix is the prefix for Anthropic API keys.
 	anthropicAPIKeyPrefix = "sk-ant-api"
 	// anthropicSetupTokenPrefix is the prefix for Anthropic OAuth setup tokens.
-	anthropicSetupTokenPrefix = "sk-ant-oat01-"
+	anthropicSetupTokenPrefix = "sk-"
 	// anthropicSetupTokenMinLen is the minimum length for a valid setup token.
-	anthropicSetupTokenMinLen = 80
+	anthropicSetupTokenMinLen = 60
 	// anthropicSetupTokenExpiry is the default lifetime for setup tokens.
 	anthropicSetupTokenExpiry = 365 * 24 * time.Hour
 )

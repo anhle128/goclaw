@@ -15,7 +15,7 @@ import (
 )
 
 // setupTokenPattern matches Anthropic OAuth setup tokens in CLI output.
-var setupTokenPattern = regexp.MustCompile(`sk-ant-oat01-[A-Za-z0-9_-]{40,}`)
+var setupTokenPattern = regexp.MustCompile(`sk-[A-Za-z0-9_-]{40,}`)
 
 func authAnthropicCmd() *cobra.Command {
 	var tokenFlag string
@@ -81,10 +81,10 @@ func runClaudeSetupToken() (string, error) {
 		return "", fmt.Errorf("claude setup-token failed: %w", err)
 	}
 
-	// Scan output for sk-ant-oat01- token pattern
+	// Scan output for sk- token pattern
 	token := setupTokenPattern.FindString(string(output))
 	if token == "" {
-		return "", fmt.Errorf("no setup token found in claude output (expected sk-ant-oat01-...)")
+		return "", fmt.Errorf("no setup token found in claude output (expected sk-...)")
 	}
 
 	return token, nil

@@ -108,12 +108,12 @@ export function ProviderFormDialog({ open, onOpenChange, onSubmit, existingProvi
 
       if (apiKey && apiKey !== "***") {
         // Validate Anthropic setup token format
-        if (isAnthropicOAuth && !apiKey.startsWith("sk-ant-oat01-")) {
+        if (isAnthropicOAuth && !apiKey.startsWith("sk-")) {
           setError(t("form.setupTokenInvalidPrefix"));
           setLoading(false);
           return;
         }
-        if (isAnthropicOAuth && apiKey.length < 80) {
+        if (isAnthropicOAuth && apiKey.length < 60) {
           setError(t("form.setupTokenTooShort"));
           setLoading(false);
           return;
@@ -258,7 +258,7 @@ export function ProviderFormDialog({ open, onOpenChange, onSubmit, existingProvi
                       type="password"
                       value={apiKey}
                       onChange={(e) => setApiKey(e.target.value)}
-                      placeholder={isAnthropicOAuth ? "sk-ant-oat01-..." : t("form.apiKeyPlaceholder")}
+                      placeholder={isAnthropicOAuth ? "sk-..." : t("form.apiKeyPlaceholder")}
                       className="text-base md:text-sm"
                     />
                     {isAnthropicOAuth && (
