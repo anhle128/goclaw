@@ -279,6 +279,7 @@ func sunoModels() []ModelInfo {
 // anthropicOAuthModels returns hardcoded Anthropic models for the
 // anthropic_oauth provider. Setup tokens lack /v1/models permission,
 // so we return a static list instead of calling the API.
+// TODO: replace with dynamic fetch when setup tokens gain /v1/models permission.
 func anthropicOAuthModels() []ModelInfo {
 	return []ModelInfo{
 		{ID: "claude-opus-4-6", Name: "Claude Opus 4.6"},
