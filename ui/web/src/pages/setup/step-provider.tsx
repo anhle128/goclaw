@@ -192,7 +192,7 @@ export function StepProvider({ onComplete, existingProvider }: StepProviderProps
               <div className="space-y-2">
                 <Label className="inline-flex items-center gap-1.5">
                   {isAnthropicOAuth ? t("provider.setupToken", "Setup Token") : t("provider.apiKey")}
-                  <InfoTip text={isAnthropicOAuth ? t("provider.apiKeyHintOAuth") : t("provider.apiKeyHint")} />
+                  <InfoTip text={isAnthropicOAuth ? t("provider.setupTokenHintTooltip") : t("provider.apiKeyHint")} />
                 </Label>
                 <Input
                   type="password"
@@ -200,6 +200,11 @@ export function StepProvider({ onComplete, existingProvider }: StepProviderProps
                   onChange={(e) => setApiKey(e.target.value)}
                   placeholder={isAnthropicOAuth ? "sk-ant-oat01-..." : "sk-..."}
                 />
+                {isAnthropicOAuth && (
+                  <p className="text-xs text-muted-foreground">
+                    {t("provider.setupTokenHint", "Run 'claude setup-token' in your terminal and paste it here.")}
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">
