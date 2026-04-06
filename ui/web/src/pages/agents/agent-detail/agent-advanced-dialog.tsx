@@ -42,7 +42,7 @@ interface AgentAdvancedDialogProps {
 
 export function AgentAdvancedDialog({ open, onOpenChange, agent, onUpdate }: AgentAdvancedDialogProps) {
   const { t } = useTranslation("agents");
-  const { providers, loading: providersLoading } = useProviders();
+  const { providers, loading: providersLoading, refresh: refreshProviders } = useProviders();
   const providerByName = new Map(providers.map((provider) => [provider.name, provider]));
   const currentProvider = providerByName.get(agent.provider);
   const { models: providerModels, loading: providerModelsLoading } = useProviderModels(
@@ -113,6 +113,7 @@ export function AgentAdvancedDialog({ open, onOpenChange, agent, onUpdate }: Age
   // Re-sync local state when dialog opens (picks up latest agent data from React Query)
   useEffect(() => {
     if (!open) return;
+    refreshProviders();
     const s = deriveState(agent);
     setReasoningMode(s.reasoningMode);
     setThinkingLevel(s.thinkingLevel);
@@ -213,7 +214,7 @@ export function AgentAdvancedDialog({ open, onOpenChange, agent, onUpdate }: Age
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] w-[95vw] flex flex-col sm:max-w-2xl">
+      <DialogContent className="max-h-[90vh] w-[95vw] flex flex-col sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Settings className="h-4 w-4" />

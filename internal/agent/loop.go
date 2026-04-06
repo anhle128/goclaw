@@ -290,7 +290,7 @@ func (l *Loop) runLoop(ctx context.Context, req RunRequest) (result *RunResult, 
 			callCtx = providers.WithReasoningDecision(callCtx, reasoningDecision)
 		}
 		llmSpanStart := time.Now().UTC()
-		llmSpanID := l.emitLLMSpanStart(callCtx, llmSpanStart, rs.iteration, messages)
+		llmSpanID := l.emitLLMSpanStart(callCtx, llmSpanStart, rs.iteration, messages, withModel(model), withProvider(provider.Name()))
 
 		if req.Stream {
 			resp, err = provider.ChatStream(callCtx, chatReq, func(chunk providers.StreamChunk) {
@@ -316,11 +316,11 @@ func (l *Loop) runLoop(ctx context.Context, req RunRequest) (result *RunResult, 
 		}
 
 		if err != nil {
-			l.emitLLMSpanEnd(callCtx, llmSpanID, llmSpanStart, nil, err)
+			l.emitLLMSpanEnd(callCtx, llmSpanID, llmSpanStart, nil, err, withModel(model), withProvider(provider.Name()))
 			return nil, fmt.Errorf("LLM call failed (iteration %d): %w", rs.iteration, err)
 		}
 
-		l.emitLLMSpanEnd(callCtx, llmSpanID, llmSpanStart, resp, nil)
+		l.emitLLMSpanEnd(callCtx, llmSpanID, llmSpanStart, resp, nil, withModel(model), withProvider(provider.Name()))
 
 		// For non-streaming responses, emit thinking and content as single events
 		if !req.Stream {
@@ -699,7 +699,13 @@ func (l *Loop) runLoop(ctx context.Context, req RunRequest) (result *RunResult, 
 
 			// 5. Process results sequentially: emit events, append messages, save to session
 			// Note: tool span start/end already emitted inside goroutines above.
+			// IMPORTANT: warning messages (role="user") must be deferred until AFTER all
+			// tool results are appended. Inserting a user message between tool results
+			// breaks the Anthropic API requirement that all tool_results for a set of
+			// tool_uses must be consecutive (causes "tool_use ids without tool_result"
+			// errors when routed through LiteLLM OpenAI→Anthropic conversion).
 			var loopStuck bool
+			var deferredWarnings []providers.Message
 			for _, r := range collected {
 				// Record tool execution time for adaptive thresholds.
 				toolTiming.Record(r.tc.Name, time.Since(r.spanStart).Milliseconds())
@@ -708,12 +714,14 @@ func (l *Loop) runLoop(ctx context.Context, req RunRequest) (result *RunResult, 
 				toolMsg, warningMsgs, action := l.processToolResult(ctx, rs, &req, emitRun, r.tc, r.registryName, r.result, hadBootstrap)
 				messages = append(messages, toolMsg)
 				rs.pendingMsgs = append(rs.pendingMsgs, toolMsg)
-				messages = append(messages, warningMsgs...)
+				deferredWarnings = append(deferredWarnings, warningMsgs...)
 				if action == toolResultBreak {
 					loopStuck = true
 					break
 				}
 			}
+			// Append deferred warnings after all tool results to preserve consecutive grouping.
+			messages = append(messages, deferredWarnings...)
 
 			// Check read-only streak after processing all parallel results.
 			if !loopStuck {
