@@ -294,6 +294,7 @@ func registerProvidersFromDB(registry *providers.Registry, provStore store.Provi
 				continue
 			}
 			var cliOpts []providers.ClaudeCLIOption
+			cliOpts = append(cliOpts, providers.WithClaudeCLIName(p.Name))
 			cliOpts = append(cliOpts, providers.WithClaudeCLISecurityHooks("", true))
 			if gatewayAddr != "" {
 				mcpData := providers.BuildCLIMCPConfigData(nil, gatewayAddr, gatewayToken)
@@ -491,6 +492,7 @@ func registerACPFromDB(registry *providers.Registry, p store.LLMProviderData) {
 	}
 	registry.RegisterForTenant(p.TenantID, providers.NewACPProvider(
 		binary, settings.Args, workDir, idleTTL, tools.DefaultDenyPatterns(),
+		providers.WithACPName(p.Name),
 		providers.WithACPModel(p.Name),
 	))
 	slog.Info("registered provider from DB", "name", p.Name, "type", "acp")

@@ -16,6 +16,7 @@ import (
 // ACPProvider implements Provider by orchestrating ACP-compatible agent subprocesses.
 // It delegates to a ProcessPool that manages agent lifecycle over JSON-RPC 2.0 stdio.
 type ACPProvider struct {
+	name         string // provider name (default: "acp")
 	pool         *acp.ProcessPool
 	bridge       *acp.ToolBridge
 	defaultModel string
@@ -35,6 +36,15 @@ func WithACPModel(model string) ACPOption {
 	}
 }
 
+// WithACPName overrides the provider name (default: "acp").
+func WithACPName(name string) ACPOption {
+	return func(p *ACPProvider) {
+		if name != "" {
+			p.name = name
+		}
+	}
+}
+
 // WithACPPermMode sets the permission mode for the tool bridge.
 func WithACPPermMode(mode string) ACPOption {
 	return func(p *ACPProvider) {
@@ -47,6 +57,7 @@ func WithACPPermMode(mode string) ACPOption {
 // NewACPProvider creates a provider that orchestrates ACP agents as subprocesses.
 func NewACPProvider(binary string, args []string, workDir string, idleTTL time.Duration, denyPatterns []*regexp.Regexp, opts ...ACPOption) *ACPProvider {
 	p := &ACPProvider{
+		name:         "acp",
 		defaultModel: "claude",
 	}
 	for _, opt := range opts {
@@ -70,7 +81,7 @@ func NewACPProvider(binary string, args []string, workDir string, idleTTL time.D
 	return p
 }
 
-func (p *ACPProvider) Name() string         { return "acp" }
+func (p *ACPProvider) Name() string         { return p.name }
 func (p *ACPProvider) DefaultModel() string { return p.defaultModel }
 
 // Chat sends a prompt and returns the complete response (non-streaming).
