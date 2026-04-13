@@ -30,8 +30,6 @@ import { CLISection } from "./provider-cli-section";
 import { ACPSection } from "./provider-acp-section";
 import { ProviderStandardFormFields } from "./provider-standard-form-fields";
 import { Loader2 } from "lucide-react";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import { InfoTip } from "@/pages/setup/info-tip";
 import { providerCreateSchema, type ProviderCreateFormData } from "@/schemas/provider.schema";
 
 interface ProviderFormDialogProps {
