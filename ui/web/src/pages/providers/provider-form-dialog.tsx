@@ -28,6 +28,7 @@ import { DEFAULT_CODEX_OAUTH_ALIAS, PROVIDER_TYPES, suggestUniqueProviderAlias }
 import { OAuthSection } from "./provider-oauth-section";
 import { CLISection } from "./provider-cli-section";
 import { ACPSection } from "./provider-acp-section";
+import { ProviderStandardFormFields } from "./provider-standard-form-fields";
 import { Loader2 } from "lucide-react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { InfoTip } from "@/pages/setup/info-tip";
@@ -226,30 +227,24 @@ export function ProviderFormDialog({ open, onOpenChange, onSubmit, existingProvi
               )}
 
               {!isCLI && !isACP && (
-                <>
-                  <div className="space-y-2">
-                    <Label htmlFor="apiBase">{t("form.apiBase")}</Label>
-                    <Input
-                      id="apiBase"
-                      {...register("apiBase")}
-                      placeholder={PROVIDER_TYPES.find((pt) => pt.value === providerType)?.placeholder || PROVIDER_TYPES.find((pt) => pt.value === providerType)?.apiBase || "https://api.example.com/v1"}
-                      className="text-base md:text-sm"
-                    />
-                  </div>
+                <ProviderStandardFormFields
+                  register={register}
+                  errors={errors}
+                  providerType={providerType}
+                  control={control}
+                />
+              )}
 
-                  <div className="space-y-2">
-                    <Label htmlFor="apiKey" className="inline-flex items-center gap-1.5">
-                      {isAnthropicOAuth ? t("form.setupToken") : t("form.apiKey")}
-                      <TooltipProvider>
-                        <InfoTip text={isAnthropicOAuth ? t("form.setupTokenHintTooltip") : t("form.apiKeyHint", "Your provider's secret key. Encrypted server-side and never exposed in API responses.")} />
-                      </TooltipProvider>
-                    </Label>
-                    <Input
-                      id="apiKey"
-                      type="password"
-                      {...register("apiKey")}
-                      placeholder={isAnthropicOAuth ? "sk-..." : t("form.apiKeyPlaceholder")}
-                      className="text-base md:text-sm"
+              {(isCLI || isACP) && (
+                <>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="enabled">{t("form.enabled")}</Label>
+                    <Controller
+                      control={control}
+                      name="enabled"
+                      render={({ field }) => (
+                        <Switch id="enabled" checked={field.value} onCheckedChange={field.onChange} />
+                      )}
                     />
                     {isAnthropicOAuth && (
                       <p className="text-xs text-muted-foreground">
@@ -257,23 +252,13 @@ export function ProviderFormDialog({ open, onOpenChange, onSubmit, existingProvi
                       </p>
                     )}
                   </div>
+                  {errors.root && (
+                    <p className="text-sm text-destructive">{errors.root.message}</p>
+                  )}
                 </>
               )}
-
-              <div className="flex items-center justify-between">
-                <Label htmlFor="enabled">{t("form.enabled")}</Label>
-                <Controller
-                  control={control}
-                  name="enabled"
-                  render={({ field }) => (
-                    <Switch id="enabled" checked={field.value} onCheckedChange={field.onChange} />
-                  )}
-                />
-              </div>
-              {errors.root && (
-                <p className="text-sm text-destructive">{errors.root.message}</p>
-              )}
             </>
+
           )}
         </div>
         <DialogFooter>

@@ -35,6 +35,9 @@ const OptWorkspace = "workspace"
 // Required for memory indexing and tenant-scoped queries via bridge tools.
 const OptTenantID = "tenant_id"
 
+// OptLocalKey passes the composite local key (e.g. "-100123:topic:42") for forum topic routing.
+const OptLocalKey = "local_key"
+
 // ClaudeCLIProvider implements Provider by shelling out to the `claude` CLI binary.
 // It acts as a thin proxy: CLI manages session history, tool execution, and context.
 // GoClaw only forwards the latest user message and streams back the response.
@@ -135,6 +138,21 @@ func NewClaudeCLIProvider(cliPath string, opts ...ClaudeCLIOption) *ClaudeCLIPro
 
 func (p *ClaudeCLIProvider) Name() string        { return p.name }
 func (p *ClaudeCLIProvider) DefaultModel() string { return p.defaultModel }
+
+// Capabilities implements CapabilitiesAware for pipeline code-path selection.
+// ClaudeCLI is subprocess-based — no HTTP adapter, capabilities only.
+func (p *ClaudeCLIProvider) Capabilities() ProviderCapabilities {
+	return ProviderCapabilities{
+		Streaming:        true,
+		ToolCalling:      true,
+		StreamWithTools:  true,
+		Thinking:         true,
+		Vision:           false,
+		CacheControl:     false,
+		MaxContextWindow: 200_000,
+		TokenizerID:      "cl100k_base",
+	}
+}
 
 // Close cleans up temp files (per-session MCP configs, hooks settings). Implements io.Closer.
 func (p *ClaudeCLIProvider) Close() error {

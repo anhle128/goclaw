@@ -97,7 +97,7 @@ func gatewayRequestJSON(method, path string, body any) (map[string]any, error) {
 		return nil, err
 	}
 
-	url := gatewayURL() + path
+	url := resolveGatewayBaseURL() + path
 	req, err := http.NewRequest(method, url, bytes.NewReader(data))
 	if err != nil {
 		return nil, err
@@ -110,7 +110,7 @@ func gatewayRequestJSON(method, path string, body any) (map[string]any, error) {
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("cannot reach gateway at %s: %w", gatewayURL(), err)
+		return nil, fmt.Errorf("cannot reach gateway at %s: %w", resolveGatewayBaseURL(), err)
 	}
 	defer resp.Body.Close()
 

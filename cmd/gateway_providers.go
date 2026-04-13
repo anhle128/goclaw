@@ -28,15 +28,17 @@ func loopbackAddr(host string, port int) string {
 	return net.JoinHostPort(host, strconv.Itoa(port))
 }
 
-func registerProviders(registry *providers.Registry, cfg *config.Config) {
+func registerProviders(registry *providers.Registry, cfg *config.Config, modelReg providers.ModelRegistry) {
 	if cfg.Providers.Anthropic.APIKey != "" {
 		registry.Register(providers.NewAnthropicProvider(cfg.Providers.Anthropic.APIKey,
-			providers.WithAnthropicBaseURL(cfg.Providers.Anthropic.APIBase)))
+			providers.WithAnthropicBaseURL(cfg.Providers.Anthropic.APIBase),
+			providers.WithAnthropicRegistry(modelReg)))
 		slog.Info("registered provider", "name", "anthropic")
 	}
 
 	if cfg.Providers.OpenAI.APIKey != "" {
-		registry.Register(providers.NewOpenAIProvider("openai", cfg.Providers.OpenAI.APIKey, cfg.Providers.OpenAI.APIBase, "gpt-4o"))
+		registry.Register(providers.NewOpenAIProvider("openai", cfg.Providers.OpenAI.APIKey, cfg.Providers.OpenAI.APIBase, "gpt-4o").
+			WithRegistry(modelReg))
 		slog.Info("registered provider", "name", "openai")
 	}
 
@@ -268,7 +270,7 @@ func jsonToStringMap(data json.RawMessage) map[string]string {
 // gatewayAddr is used to inject GoClaw MCP bridge for Claude CLI providers.
 // mcpStore is optional; when provided, per-agent MCP servers are injected into CLI config.
 // cfg provides fallback api_base values from config/env when DB providers have none set.
-func registerProvidersFromDB(registry *providers.Registry, provStore store.ProviderStore, secretStore store.ConfigSecretsStore, gatewayAddr, gatewayToken string, mcpStore store.MCPServerStore, cfg *config.Config) {
+func registerProvidersFromDB(registry *providers.Registry, provStore store.ProviderStore, secretStore store.ConfigSecretsStore, gatewayAddr, gatewayToken string, mcpStore store.MCPServerStore, cfg *config.Config, modelReg providers.ModelRegistry) {
 	dbProviders, err := provStore.ListAllProviders(context.Background())
 	if err != nil {
 		slog.Warn("failed to load providers from DB", "error", err)
@@ -339,7 +341,8 @@ func registerProvidersFromDB(registry *providers.Registry, provStore store.Provi
 		case store.ProviderAnthropicNative, store.ProviderAnthropicOAuth:
 			registry.RegisterForTenant(p.TenantID, providers.NewAnthropicProvider(p.APIKey,
 				providers.WithAnthropicName(p.Name),
-				providers.WithAnthropicBaseURL(p.APIBase)))
+				providers.WithAnthropicBaseURL(p.APIBase),
+				providers.WithAnthropicRegistry(modelReg)))
 			// Warn if setup token is nearing expiry
 			if p.ProviderType == store.ProviderAnthropicOAuth && len(p.Settings) > 0 {
 				var settings providers.AnthropicTokenSettings

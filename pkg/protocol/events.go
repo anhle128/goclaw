@@ -99,8 +99,15 @@ const (
 	EventZaloPersonalQRCode = "zalo.personal.qr.code"
 	EventZaloPersonalQRDone = "zalo.personal.qr.done"
 
+	// WhatsApp QR login events (client-scoped, not broadcast).
+	EventWhatsAppQRCode = "whatsapp.qr.code"
+	EventWhatsAppQRDone = "whatsapp.qr.done"
+
 	// Tenant access revocation — forces affected user's UI to logout.
 	EventTenantAccessRevoked = "tenant.access.revoked"
+
+	// Vault enrichment pipeline progress.
+	EventVaultEnrichProgress = "vault.enrich.progress"
 )
 
 // Agent event subtypes (in payload.type)

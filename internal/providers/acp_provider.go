@@ -27,20 +27,20 @@ type ACPProvider struct {
 // ACPOption configures an ACPProvider.
 type ACPOption func(*ACPProvider)
 
-// WithACPModel sets the default model/agent name.
-func WithACPModel(model string) ACPOption {
-	return func(p *ACPProvider) {
-		if model != "" {
-			p.defaultModel = model
-		}
-	}
-}
-
 // WithACPName overrides the provider name (default: "acp").
 func WithACPName(name string) ACPOption {
 	return func(p *ACPProvider) {
 		if name != "" {
 			p.name = name
+		}
+	}
+}
+
+// WithACPModel sets the default model/agent name.
+func WithACPModel(model string) ACPOption {
+	return func(p *ACPProvider) {
+		if model != "" {
+			p.defaultModel = model
 		}
 	}
 }
@@ -83,6 +83,21 @@ func NewACPProvider(binary string, args []string, workDir string, idleTTL time.D
 
 func (p *ACPProvider) Name() string         { return p.name }
 func (p *ACPProvider) DefaultModel() string { return p.defaultModel }
+
+// Capabilities implements CapabilitiesAware for pipeline code-path selection.
+// ACP is subprocess-based (JSON-RPC 2.0 over stdio) — no HTTP adapter, capabilities only.
+func (p *ACPProvider) Capabilities() ProviderCapabilities {
+	return ProviderCapabilities{
+		Streaming:        true,
+		ToolCalling:      true,
+		StreamWithTools:  true,
+		Thinking:         true,
+		Vision:           false,
+		CacheControl:     false,
+		MaxContextWindow: 200_000,
+		TokenizerID:      "cl100k_base",
+	}
+}
 
 // Chat sends a prompt and returns the complete response (non-streaming).
 func (p *ACPProvider) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, error) {
