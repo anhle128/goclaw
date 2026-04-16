@@ -3,11 +3,13 @@ package pipeline
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/nextlevelbuilder/goclaw/internal/providers"
 )
 
 const maxTruncRetries = 3
+const maxEmptyRetries = 2
 
 // ThinkStage runs per iteration. Calls LLM, handles truncation retries,
 // accumulates usage, returns BreakLoop when response has no tool calls.
@@ -88,6 +90,32 @@ func (s *ThinkStage) Execute(ctx context.Context, state *RunState) error {
 		return nil // Continue to next iteration for retry
 	}
 	state.Think.TruncRetries = 0 // reset on success
+
+	// 6b. Handle empty provider response: no content, no tool calls, no thinking,
+	// AND zero/nil token usage. All four conditions must be true — providers that
+	// don't report usage (Ollama, local models) but return valid content are fine.
+	isEmptyResponse := resp.Content == "" && resp.Thinking == "" &&
+		len(resp.ToolCalls) == 0 &&
+		(resp.Usage == nil || resp.Usage.TotalTokens == 0)
+	if isEmptyResponse {
+		state.Think.EmptyRetries++
+		slog.Warn("empty LLM response (no content, no tokens), retrying",
+			"attempt", state.Think.EmptyRetries,
+			"max", maxEmptyRetries,
+			"model", state.Model,
+			"iteration", state.Iteration,
+			"finish_reason", resp.FinishReason)
+		if state.Think.EmptyRetries >= maxEmptyRetries {
+			s.result = BreakLoop
+			return nil
+		}
+		state.Messages.AppendPending(providers.Message{
+			Role:    "user",
+			Content: "[System] Your previous response was empty. Please try again.",
+		})
+		return nil // Continue → next iteration retries
+	}
+	state.Think.EmptyRetries = 0 // reset on non-empty response
 
 	// 7. Uniquify tool call IDs (OpenAI returns 400 on duplicates across iterations).
 	// Skip if raw content present (Anthropic thinking passback) to avoid desync.

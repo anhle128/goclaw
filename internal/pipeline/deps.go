@@ -80,6 +80,7 @@ type PipelineDeps struct {
 	FlushMessages func(ctx context.Context, sessionKey string, msgs []providers.Message) error
 
 	// Finalize callbacks (FinalizeStage)
+	EmptyResponseFallback    func() string                                                        // i18n fallback when LLM returns empty content (nil = "...")
 	SkillPostscript          func(ctx context.Context, content string, totalToolCalls int) string // skill evolution nudge (nil = disabled)
 	SanitizeContent          func(content string) string
 	StripMessageDirectives   func(content string) string

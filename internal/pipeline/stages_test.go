@@ -54,6 +54,7 @@ func TestThinkStage_NoToolCalls_ReturnsBreakLoop(t *testing.T) {
 			return &providers.ChatResponse{
 				Content:      "final answer",
 				FinishReason: "stop",
+				Usage:        &providers.Usage{PromptTokens: 100, CompletionTokens: 10, TotalTokens: 110},
 			}, nil
 		},
 	}
@@ -190,6 +191,147 @@ func TestThinkStage_TruncationReset_OnSuccess(t *testing.T) {
 	}
 	if state.Think.TruncRetries != 0 {
 		t.Errorf("TruncRetries = %d after success, want 0", state.Think.TruncRetries)
+	}
+}
+
+func TestThinkStage_EmptyResponse_FirstRetry_AppendsContinueMessage(t *testing.T) {
+	t.Parallel()
+	deps := &PipelineDeps{
+		Config: PipelineConfig{MaxIterations: 10, MaxTokens: 1000},
+		CallLLM: func(_ context.Context, _ *RunState, _ providers.ChatRequest) (*providers.ChatResponse, error) {
+			// Fully empty: no content, no thinking, no tool calls, no usage
+			return &providers.ChatResponse{
+				FinishReason: "stop",
+			}, nil
+		},
+	}
+	stage := NewThinkStage(deps)
+	state := defaultState()
+
+	err := stage.Execute(context.Background(), state)
+	if err != nil {
+		t.Fatalf("Execute() error: %v", err)
+	}
+	if stage.Result() != Continue {
+		t.Errorf("Result() = %v, want Continue (retry)", stage.Result())
+	}
+	if state.Think.EmptyRetries != 1 {
+		t.Errorf("EmptyRetries = %d, want 1", state.Think.EmptyRetries)
+	}
+	// Should append system hint for retry (no assistant echo since content is empty)
+	pending := state.Messages.Pending()
+	if len(pending) != 1 {
+		t.Fatalf("pending len = %d, want 1 (system hint)", len(pending))
+	}
+	if pending[0].Role != "user" {
+		t.Errorf("hint role = %s, want user", pending[0].Role)
+	}
+}
+
+func TestThinkStage_ContentWithNilUsage_NoRetry(t *testing.T) {
+	t.Parallel()
+	// Providers like Ollama return content but no usage — should NOT retry.
+	deps := &PipelineDeps{
+		Config: PipelineConfig{MaxIterations: 10, MaxTokens: 1000},
+		CallLLM: func(_ context.Context, _ *RunState, _ providers.ChatRequest) (*providers.ChatResponse, error) {
+			return &providers.ChatResponse{
+				Content:      "valid response from Ollama",
+				FinishReason: "stop",
+				// Usage nil — but content present, so this is valid
+			}, nil
+		},
+	}
+	stage := NewThinkStage(deps)
+	state := defaultState()
+
+	err := stage.Execute(context.Background(), state)
+	if err != nil {
+		t.Fatalf("Execute() error: %v", err)
+	}
+	if stage.Result() != BreakLoop {
+		t.Errorf("Result() = %v, want BreakLoop (valid final answer)", stage.Result())
+	}
+	if state.Think.EmptyRetries != 0 {
+		t.Errorf("EmptyRetries = %d, want 0 (content present, no retry)", state.Think.EmptyRetries)
+	}
+}
+
+func TestThinkStage_EmptyResponse_MaxRetries_ReturnsBreakLoop(t *testing.T) {
+	t.Parallel()
+	deps := &PipelineDeps{
+		Config: PipelineConfig{MaxIterations: 10, MaxTokens: 1000},
+		CallLLM: func(_ context.Context, _ *RunState, _ providers.ChatRequest) (*providers.ChatResponse, error) {
+			return &providers.ChatResponse{
+				FinishReason: "stop",
+				Usage:        &providers.Usage{TotalTokens: 0},
+			}, nil
+		},
+	}
+	stage := NewThinkStage(deps)
+	state := defaultState()
+	state.Think.EmptyRetries = 1 // already had one retry
+
+	err := stage.Execute(context.Background(), state)
+	if err != nil {
+		t.Fatalf("Execute() error: %v", err)
+	}
+	if stage.Result() != BreakLoop {
+		t.Errorf("Result() = %v, want BreakLoop (max retries exhausted)", stage.Result())
+	}
+	if state.Think.EmptyRetries != 2 {
+		t.Errorf("EmptyRetries = %d, want 2", state.Think.EmptyRetries)
+	}
+}
+
+func TestThinkStage_EmptyResponse_ResetOnSuccess(t *testing.T) {
+	t.Parallel()
+	deps := &PipelineDeps{
+		Config: PipelineConfig{MaxIterations: 10, MaxTokens: 1000},
+		CallLLM: func(_ context.Context, _ *RunState, _ providers.ChatRequest) (*providers.ChatResponse, error) {
+			return &providers.ChatResponse{
+				Content:      "real answer",
+				FinishReason: "stop",
+				Usage:        &providers.Usage{PromptTokens: 100, CompletionTokens: 20, TotalTokens: 120},
+			}, nil
+		},
+	}
+	stage := NewThinkStage(deps)
+	state := defaultState()
+	state.Think.EmptyRetries = 1 // had a retry before
+
+	err := stage.Execute(context.Background(), state)
+	if err != nil {
+		t.Fatalf("Execute() error: %v", err)
+	}
+	if state.Think.EmptyRetries != 0 {
+		t.Errorf("EmptyRetries = %d after success, want 0", state.Think.EmptyRetries)
+	}
+}
+
+func TestThinkStage_EmptyResponse_WithToolCalls_SkipsRetry(t *testing.T) {
+	t.Parallel()
+	deps := &PipelineDeps{
+		Config: PipelineConfig{MaxIterations: 10, MaxTokens: 1000},
+		CallLLM: func(_ context.Context, _ *RunState, _ providers.ChatRequest) (*providers.ChatResponse, error) {
+			return &providers.ChatResponse{
+				FinishReason: "tool_calls",
+				ToolCalls:    []providers.ToolCall{{ID: "tc1", Name: "exec"}},
+				// Usage nil but tool calls present → should NOT retry
+			}, nil
+		},
+	}
+	stage := NewThinkStage(deps)
+	state := defaultState()
+
+	err := stage.Execute(context.Background(), state)
+	if err != nil {
+		t.Fatalf("Execute() error: %v", err)
+	}
+	if stage.Result() != Continue {
+		t.Errorf("Result() = %v, want Continue (tool execution)", stage.Result())
+	}
+	if state.Think.EmptyRetries != 0 {
+		t.Errorf("EmptyRetries = %d, want 0 (tool calls bypass zero-token check)", state.Think.EmptyRetries)
 	}
 }
 

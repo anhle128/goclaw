@@ -72,7 +72,8 @@ func init() {
 		MsgShuttingDown: "gateway is shutting down, please retry shortly",
 
 		// Provider
-		MsgProviderReqFailed: "%s: request failed: %s",
+		MsgProviderReqFailed:     "%s: request failed: %s",
+		MsgEmptyResponseFallback: "I couldn't generate a response. Please try again.",
 
 		// Unknown method
 		MsgUnknownMethod: "unknown method: %s",

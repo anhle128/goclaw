@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/nextlevelbuilder/goclaw/internal/eventbus"
+	"github.com/nextlevelbuilder/goclaw/internal/i18n"
 	"github.com/nextlevelbuilder/goclaw/internal/memory"
 	"github.com/nextlevelbuilder/goclaw/internal/pipeline"
 	"github.com/nextlevelbuilder/goclaw/internal/providers"
@@ -142,9 +143,12 @@ func (l *Loop) buildPipelineDeps(req *RunRequest, bridgeRS *runState) pipeline.P
 		},
 
 		// Checkpoint + Finalize
-		FlushMessages:          cb.flushMessages,
-		SkillPostscript:        l.makeSkillPostscript(),
-		SanitizeContent:        cb.sanitizeContent,
+		FlushMessages: cb.flushMessages,
+		EmptyResponseFallback: func() string {
+			return i18n.T("en", i18n.MsgEmptyResponseFallback)
+		},
+		SkillPostscript: l.makeSkillPostscript(),
+		SanitizeContent: cb.sanitizeContent,
 		StripMessageDirectives: StripMessageDirectives,
 		DeduplicateMediaSuffix: deduplicateMediaSuffix,
 		IsSilentReply:          IsSilentReply,

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -151,6 +152,13 @@ func (l *Loop) emitLLMSpanEnd(ctx context.Context, spanID uuid.UUID, start time.
 		updates["status"] = store.SpanStatusError
 		updates["error"] = callErr.Error()
 	} else if resp != nil {
+		// Warn only when response is truly empty (no content + no tokens) — signals provider failure.
+		// Providers that don't report usage but return valid content (Ollama, local models) are fine.
+		if resp.Content == "" && len(resp.ToolCalls) == 0 && (resp.Usage == nil || resp.Usage.TotalTokens == 0) {
+			slog.Warn("empty LLM span: no content and no tokens",
+				"trace_id", traceID, "span_id", spanID,
+				"finish_reason", resp.FinishReason)
+		}
 		if resp.Usage != nil {
 			updates["input_tokens"] = resp.Usage.PromptTokens
 			updates["output_tokens"] = resp.Usage.CompletionTokens

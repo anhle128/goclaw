@@ -32,6 +32,7 @@ type ThinkState struct {
 	LastResponse    *providers.ChatResponse
 	TotalUsage      providers.Usage
 	TruncRetries    int  // consecutive truncation retries (max 3)
+	EmptyRetries    int  // consecutive zero-token response retries (max 2)
 	StreamingActive bool // true during active stream
 }
 

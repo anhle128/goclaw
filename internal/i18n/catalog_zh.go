@@ -72,7 +72,8 @@ func init() {
 		MsgShuttingDown: "网关正在关闭，请稍后重试",
 
 		// Provider
-		MsgProviderReqFailed: "%s：请求失败：%s",
+		MsgProviderReqFailed:     "%s：请求失败：%s",
+		MsgEmptyResponseFallback: "无法生成回复，请重试。",
 
 		// Unknown method
 		MsgUnknownMethod: "未知方法：%s",

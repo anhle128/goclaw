@@ -73,7 +73,8 @@ const (
 	MsgShuttingDown    = "error.shutting_down"     // "gateway is shutting down, please retry shortly"
 
 	// --- Provider ---
-	MsgProviderReqFailed = "error.provider_request_failed" // "%s: request failed: %s"
+	MsgProviderReqFailed      = "error.provider_request_failed"      // "%s: request failed: %s"
+	MsgEmptyResponseFallback  = "error.empty_response_fallback"      // "I couldn't generate a response. Please try again."
 
 	// --- Unknown method ---
 	MsgUnknownMethod = "error.unknown_method" // "unknown method: %s"

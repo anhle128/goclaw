@@ -72,7 +72,8 @@ func init() {
 		MsgShuttingDown: "cổng đang tắt, vui lòng thử lại sau",
 
 		// Provider
-		MsgProviderReqFailed: "%s: yêu cầu thất bại: %s",
+		MsgProviderReqFailed:     "%s: yêu cầu thất bại: %s",
+		MsgEmptyResponseFallback: "Tôi không thể tạo phản hồi. Vui lòng thử lại.",
 
 		// Unknown method
 		MsgUnknownMethod: "phương thức không xác định: %s",
