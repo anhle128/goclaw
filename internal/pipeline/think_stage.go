@@ -77,6 +77,7 @@ func (s *ThinkStage) Execute(ctx context.Context, state *RunState) error {
 	parseErr := !truncated && toolCallsHaveParseErrors(resp.ToolCalls)
 	if truncated || parseErr {
 		state.Think.TruncRetries++
+		state.Think.EmptyRetries = 0 // reset: non-consecutive empty
 		if state.Think.TruncRetries >= maxTruncRetries {
 			s.result = AbortRun
 			return nil
@@ -99,6 +100,7 @@ func (s *ThinkStage) Execute(ctx context.Context, state *RunState) error {
 		(resp.Usage == nil || resp.Usage.TotalTokens == 0)
 	if isEmptyResponse {
 		state.Think.EmptyRetries++
+		state.Think.TruncRetries = 0 // reset: non-consecutive truncation
 		slog.Warn("empty LLM response (no content, no tokens), retrying",
 			"attempt", state.Think.EmptyRetries,
 			"max", maxEmptyRetries,

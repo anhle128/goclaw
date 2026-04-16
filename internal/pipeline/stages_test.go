@@ -335,6 +335,62 @@ func TestThinkStage_EmptyResponse_WithToolCalls_SkipsRetry(t *testing.T) {
 	}
 }
 
+func TestThinkStage_EmptyRetries_ResetByTruncation(t *testing.T) {
+	t.Parallel()
+	// Scenario: empty response (EmptyRetries=1) → truncation → empty response.
+	// The truncation in between should reset EmptyRetries to 0,
+	// so the second empty response starts at EmptyRetries=1, not 2.
+	callNum := 0
+	deps := &PipelineDeps{
+		Config: PipelineConfig{MaxIterations: 10, MaxTokens: 1000},
+		CallLLM: func(_ context.Context, _ *RunState, _ providers.ChatRequest) (*providers.ChatResponse, error) {
+			callNum++
+			switch callNum {
+			case 1:
+				// Empty response
+				return &providers.ChatResponse{FinishReason: "stop"}, nil
+			case 2:
+				// Truncated tool call
+				return &providers.ChatResponse{
+					FinishReason: "length",
+					ToolCalls:    []providers.ToolCall{{ID: "tc1", Name: "write_file"}},
+				}, nil
+			default:
+				// Empty response again
+				return &providers.ChatResponse{FinishReason: "stop"}, nil
+			}
+		},
+	}
+	stage := NewThinkStage(deps)
+	state := defaultState()
+
+	// Call 1: empty → EmptyRetries=1, Continue
+	_ = stage.Execute(context.Background(), state)
+	if state.Think.EmptyRetries != 1 {
+		t.Fatalf("after call 1: EmptyRetries = %d, want 1", state.Think.EmptyRetries)
+	}
+
+	// Call 2: truncation → EmptyRetries reset to 0, TruncRetries=1
+	stage2 := NewThinkStage(deps)
+	_ = stage2.Execute(context.Background(), state)
+	if state.Think.EmptyRetries != 0 {
+		t.Fatalf("after call 2 (truncation): EmptyRetries = %d, want 0", state.Think.EmptyRetries)
+	}
+	if state.Think.TruncRetries != 1 {
+		t.Fatalf("after call 2 (truncation): TruncRetries = %d, want 1", state.Think.TruncRetries)
+	}
+
+	// Call 3: empty again → EmptyRetries=1 (not 2), TruncRetries reset to 0
+	stage3 := NewThinkStage(deps)
+	_ = stage3.Execute(context.Background(), state)
+	if state.Think.EmptyRetries != 1 {
+		t.Errorf("after call 3: EmptyRetries = %d, want 1 (reset by truncation)", state.Think.EmptyRetries)
+	}
+	if state.Think.TruncRetries != 0 {
+		t.Errorf("after call 3: TruncRetries = %d, want 0 (reset by empty)", state.Think.TruncRetries)
+	}
+}
+
 func TestThinkStage_UsageAccumulation(t *testing.T) {
 	t.Parallel()
 	callCount := 0
