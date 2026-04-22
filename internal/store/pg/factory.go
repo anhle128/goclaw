@@ -58,6 +58,7 @@ func NewPGStores(cfg store.StoreConfig) (*store.Stores, error) {
 		Episodic:              NewPGEpisodicStore(db),
 		EvolutionMetrics:      NewPGEvolutionMetricsStore(db),
 		EvolutionSuggestions:  NewPGEvolutionSuggestionStore(db),
+		Fixtures:              NewPGFixtureStore(db),
 		Hooks:                 NewPGHookStore(db),
 	}, nil
 }
