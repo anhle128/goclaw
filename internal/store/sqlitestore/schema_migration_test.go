@@ -199,6 +199,75 @@ func TestSQLiteVaultStore_UpsertTriggerEnforcesCheck(t *testing.T) {
 	}
 }
 
+// TestFixtureMigrationV25 verifies the v24→25 migration creates llm_fixtures
+// on both a fresh DB (via schema.sql) and an existing v24 DB (incremental patch).
+func TestFixtureMigrationV25(t *testing.T) {
+	t.Run("fresh_db_has_table", func(t *testing.T) {
+		db := openTestDB(t)
+		if err := EnsureSchema(db); err != nil {
+			t.Fatalf("EnsureSchema: %v", err)
+		}
+		var n int
+		if err := db.QueryRow("SELECT count(*) FROM llm_fixtures").Scan(&n); err != nil {
+			t.Fatalf("llm_fixtures not found in fresh DB: %v", err)
+		}
+		if n != 0 {
+			t.Errorf("expected 0 rows, got %d", n)
+		}
+	})
+
+	t.Run("incremental_v24_to_v25", func(t *testing.T) {
+		db := openTestDBAtVersion(t, 24)
+		if err := EnsureSchema(db); err != nil {
+			t.Fatalf("EnsureSchema (v24→25): %v", err)
+		}
+		var version int
+		db.QueryRow("SELECT version FROM schema_version LIMIT 1").Scan(&version)
+		if version != SchemaVersion {
+			t.Errorf("schema version = %d, want %d", version, SchemaVersion)
+		}
+		var n int
+		if err := db.QueryRow("SELECT count(*) FROM llm_fixtures").Scan(&n); err != nil {
+			t.Fatalf("llm_fixtures not found after incremental migration: %v", err)
+		}
+	})
+
+	t.Run("insert_select_roundtrip", func(t *testing.T) {
+		db := openTestDB(t)
+		if err := EnsureSchema(db); err != nil {
+			t.Fatalf("EnsureSchema: %v", err)
+		}
+
+		tenantID := "00000000-0000-0000-0000-000000000001"
+		db.Exec(`INSERT INTO tenants (id, name, slug, status) VALUES (?, 'T', 't', 'active')`, tenantID)
+
+		id := "f1f1f1f1-0000-0000-0000-000000000001"
+		_, err := db.Exec(`INSERT INTO llm_fixtures
+			(id, tenant_id, provider, model, request_body, status, tags, metadata)
+			VALUES (?, ?, 'anthropic', 'claude-sonnet-4', '{"messages":[]}', 'ok', '["eval","test"]', '{"env":"test"}')`,
+			id, tenantID)
+		if err != nil {
+			t.Fatalf("INSERT llm_fixtures: %v", err)
+		}
+
+		var gotProvider, gotTags, gotMeta string
+		if err := db.QueryRow(
+			`SELECT provider, tags, metadata FROM llm_fixtures WHERE id = ?`, id,
+		).Scan(&gotProvider, &gotTags, &gotMeta); err != nil {
+			t.Fatalf("SELECT llm_fixtures: %v", err)
+		}
+		if gotProvider != "anthropic" {
+			t.Errorf("provider = %q, want %q", gotProvider, "anthropic")
+		}
+		if gotTags != `["eval","test"]` {
+			t.Errorf("tags = %q, want JSON array", gotTags)
+		}
+		if gotMeta != `{"env":"test"}` {
+			t.Errorf("metadata = %q, want JSON object", gotMeta)
+		}
+	})
+}
+
 func openTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 	db, err := OpenDB(filepath.Join(t.TempDir(), "test.db"))

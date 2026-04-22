@@ -16,7 +16,7 @@ var schemaSQL string
 
 // SchemaVersion is the current SQLite schema version.
 // Bump this when adding new migration steps below.
-const SchemaVersion = 24
+const SchemaVersion = 25
 
 // migrations maps version → SQL to apply when upgrading FROM that version.
 // schema.sql always represents the LATEST full schema (for fresh DBs).
@@ -466,6 +466,35 @@ WHERE context_pruning IS NOT NULL
 	20: `SELECT 1;`,
 	21: `SELECT 1;`,
 	22: `SELECT 1;`,
+
+	// Version 24 → 25: llm_fixtures table for LLM call capture + evaluation.
+	// Mirrors PG migration 000056. TEXT[] → JSON TEXT array; JSONB → TEXT;
+	// TIMESTAMPTZ → TEXT ISO8601; NUMERIC → REAL.
+	24: `CREATE TABLE IF NOT EXISTS llm_fixtures (
+    id               TEXT    NOT NULL PRIMARY KEY,
+    tenant_id        TEXT    NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    agent_id         TEXT    REFERENCES agents(id) ON DELETE SET NULL,
+    session_key      TEXT,
+    span_id          TEXT,
+    provider         TEXT    NOT NULL,
+    model            TEXT    NOT NULL,
+    request_body     TEXT    NOT NULL,
+    response_body    TEXT,
+    tool_call_count  INTEGER NOT NULL DEFAULT 0,
+    input_tokens     INTEGER NOT NULL DEFAULT 0,
+    output_tokens    INTEGER NOT NULL DEFAULT 0,
+    total_cost_usd   REAL    NOT NULL DEFAULT 0,
+    latency_ms       INTEGER NOT NULL DEFAULT 0,
+    status           TEXT    NOT NULL,
+    error            TEXT,
+    tags             TEXT    NOT NULL DEFAULT '[]',
+    metadata         TEXT    NOT NULL DEFAULT '{}',
+    captured_at      TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_llm_fixtures_tenant_time
+    ON llm_fixtures (tenant_id, captured_at DESC);
+CREATE INDEX IF NOT EXISTS idx_llm_fixtures_tenant_agent_time
+    ON llm_fixtures (tenant_id, agent_id, captured_at DESC);`,
 
 	// Version 23 → 24: vault_documents scope/ownership consistency triggers.
 	// Mirrors PG migration 000055 CHECK constraint; SQLite cannot add CHECK via

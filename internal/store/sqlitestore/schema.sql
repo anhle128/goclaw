@@ -1661,3 +1661,38 @@ CREATE TABLE IF NOT EXISTS tenant_hook_budget (
     metadata       TEXT NOT NULL DEFAULT '{}',
     updated_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
+
+-- ============================================================
+-- Table: llm_fixtures (migration 000056)
+-- Captures raw LLM request/response pairs for evaluation and replay.
+-- SQLite translation: UUID→TEXT, JSONB→TEXT, TIMESTAMPTZ→TEXT,
+-- TEXT[]→TEXT (JSON array), NUMERIC→REAL.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS llm_fixtures (
+    id               TEXT    NOT NULL PRIMARY KEY,
+    tenant_id        TEXT    NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    agent_id         TEXT    REFERENCES agents(id) ON DELETE SET NULL,
+    session_key      TEXT,
+    span_id          TEXT,
+    provider         TEXT    NOT NULL,
+    model            TEXT    NOT NULL,
+    request_body     TEXT    NOT NULL,
+    response_body    TEXT,
+    tool_call_count  INTEGER NOT NULL DEFAULT 0,
+    input_tokens     INTEGER NOT NULL DEFAULT 0,
+    output_tokens    INTEGER NOT NULL DEFAULT 0,
+    total_cost_usd   REAL    NOT NULL DEFAULT 0,
+    latency_ms       INTEGER NOT NULL DEFAULT 0,
+    status           TEXT    NOT NULL,
+    error            TEXT,
+    tags             TEXT    NOT NULL DEFAULT '[]',
+    metadata         TEXT    NOT NULL DEFAULT '{}',
+    captured_at      TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_llm_fixtures_tenant_time
+    ON llm_fixtures (tenant_id, captured_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_llm_fixtures_tenant_agent_time
+    ON llm_fixtures (tenant_id, agent_id, captured_at DESC);
