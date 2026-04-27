@@ -27,7 +27,7 @@ Capture LLM `ChatRequest`/`ChatResponse` pairs (opt-in) into a dedicated `llm_fi
 | 2 | Store interface + impls | [phase-02-store-interface-implementations.md](./phase-02-store-interface-implementations.md) | complete | 3,4 |
 | 3 | Capture config + Capturer package | [phase-03-capture-hook-config.md](./phase-03-capture-hook-config.md) | pending | 4 |
 | 4 | Wire Capturer into agent loop | [phase-04-wire-capture-into-loop.md](./phase-04-wire-capture-into-loop.md) | pending | 5,6,7 |
-| 5 | Export CLI (NDJSON) | [phase-05-export-cli-ndjson.md](./phase-05-export-cli-ndjson.md) | pending | 6 |
+| 5 | Export CLI (NDJSON) | [phase-05-export-cli-ndjson.md](./phase-05-export-cli-ndjson.md) | complete | 6 |
 | 6 | Langfuse dataset import | [phase-06-langfuse-dataset-import.md](./phase-06-langfuse-dataset-import.md) | pending | - |
 | 7 | Redaction + retention worker | [phase-07-redaction-retention.md](./phase-07-redaction-retention.md) | pending | - |
 | 8 | Docs + setup guide | [phase-08-docs-setup-guide.md](./phase-08-docs-setup-guide.md) | pending | - |
