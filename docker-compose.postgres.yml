@@ -26,15 +26,15 @@ services:
       retries: 10
     restart: unless-stopped
 
-  goclaw:
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      - GOCLAW_POSTGRES_DSN=postgres://${POSTGRES_USER:-goclaw}:${POSTGRES_PASSWORD:-goclaw}@postgres:5432/${POSTGRES_DB:-goclaw}?sslmode=disable
-    volumes:
-      - goclaw-skills:/app/skills
-      - goclaw-workspace:/app/.goclaw
+  # goclaw:
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #   environment:
+  #     - GOCLAW_POSTGRES_DSN=postgres://${POSTGRES_USER:-goclaw}:${POSTGRES_PASSWORD:-goclaw}@postgres:5432/${POSTGRES_DB:-goclaw}?sslmode=disable
+  #   volumes:
+  #     - goclaw-skills:/app/skills
+  #     - goclaw-workspace:/app/.goclaw
 
 volumes:
   postgres-data:
